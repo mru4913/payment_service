@@ -34,20 +34,48 @@ tg-payment-bot/
 │   │   └── callback_handler.py  # 回调处理
 │   └── runner.py                # 多机器人启动器
 ├── backend/                     # FastAPI后端服务
-│   ├── __init__.py
-│   ├── main.py                  # FastAPI应用入口
-│   ├── config.py                # 配置管理
-│   ├── database.py              # 数据库连接
-│   ├── models.py                # 数据模型
-│   ├── schemas.py               # 数据验证
-│   ├── services.py              # 业务逻辑服务
-│   ├── api.py                   # API路由
-│   ├── payments/                # 支付集成
+│   ├── database/                # 🗄️ 数据库层
+│   │   ├── models/              # 📋 数据模型
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py          # 基础模型类 (Base)
+│   │   │   ├── user.py          # 用户模型
+│   │   │   ├── payment.py       # 支付模型
+│   │   │   └── balance_transaction.py # 余额交易模型
+│   │   ├── repositories/        # 🏪 数据访问层
+│   │   │   ├── __init__.py
+│   │   │   ├── base_repository.py # 基础仓库类
+│   │   │   ├── user_repository.py # 用户数据访问
+│   │   │   ├── payment_repository.py # 支付数据访问
+│   │   │   └── balance_transaction_repository.py # 余额交易数据访问
+│   │   └── session.py           # 数据库会话管理
+│   ├── services/                # 🔧 业务逻辑层
 │   │   ├── __init__.py
+│   │   ├── user_service.py      # 用户业务逻辑
+│   │   ├── payment_service.py   # 支付业务逻辑
+│   │   └── balance_service.py   # 余额业务逻辑
+│   ├── api/                     # 🌐 API层
+│   │   ├── routers/            # 🔀 路由模块
+│   │   │   ├── __init__.py
+│   │   │   ├── users.py        # 👤 用户相关API路由
+│   │   │   ├── payments.py     # 💳 支付相关API路由
+│   │   │   ├── balance.py      # 💰 余额相关API路由
+│   │   │   └── health.py       # ❤️ 健康检查路由
+│   │   ├── dependencies.py     # 🔗 依赖注入配置
+│   │   ├── middleware.py       # 🛡️ 中间件配置
+│   │   ├── main.py            # 🚀 API主入口 (集成所有路由)
+│   │   └── __init__.py
+│   ├── config.py                # ⚙️ 配置定义
+│   ├── globals.py               # 🌍 全局实例管理
+│   ├── main.py                  # 🚀 FastAPI应用入口
+│   ├── payments/                # 💳 支付集成
+│   │   ├── __init__.py
+│   │   ├── base.py              # 支付提供商接口
 │   │   ├── alipay.py            # 支付宝集成
 │   │   ├── wechat.py            # 微信支付集成
 │   │   └── callbacks.py         # 支付回调处理
-│   └── utils.py                 # 工具函数
+│   └── utils/                   # 🛠️ 工具模块
+│       ├── __init__.py
+│       └── payment_utils.py     # 支付工具函数
 ├── scripts/                     # 部署和维护脚本
 │   ├── setup_db.py              # 数据库初始化
 │   ├── migrate_db.py            # 数据库迁移
@@ -102,10 +130,10 @@ tg-payment-bot/
 
 **主要文件**:
 - `main.py`: FastAPI应用入口，路由注册
-- `config.py`: 多环境配置管理
+- `config.py`: 配置类定义 (Pydantic Settings)
+- `globals.py`: 全局配置实例和logger管理
 - `database.py`: PostgreSQL连接和会话管理
 - `models.py`: SQLAlchemy数据模型定义
-- `schemas.py`: Pydantic请求/响应数据验证
 - `services.py`: 核心业务逻辑（支付处理、用户管理）
 - `api.py`: RESTful API路由定义
 - `payments/`: 支付平台集成代码

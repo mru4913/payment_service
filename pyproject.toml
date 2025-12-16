@@ -20,8 +20,11 @@ classifiers = [
     "Topic :: Office/Business :: Financial",
 ]
 dependencies = [
+    "asyncpg>=0.31.0",
     "fastapi[standard]>=0.124.4",
+    "pydantic-settings>=2.12.0",
     "python-telegram-bot>=22.5",
+    "sqlalchemy[asyncio]>=2.0.45",
 ]
 
 [tool.ruff]
@@ -81,3 +84,9 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.14.9",
+]
