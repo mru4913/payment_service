@@ -23,19 +23,13 @@ class BalanceService(BaseService):
         self.balance_repo = BalanceTransactionRepository(db_session)
 
     async def get_user_transactions(
-        self,
-        telegram_id: int,
-        skip: int = 0,
-        limit: int = 20
+        self, telegram_id: int, skip: int = 0, limit: int = 20
     ) -> List[BalanceTransaction]:
         """获取用户余额交易记录"""
         return await self.balance_repo.get_user_transactions(telegram_id, skip, limit)
 
     async def get_transactions_by_type(
-        self,
-        transaction_type: str,
-        skip: int = 0,
-        limit: int = 100
+        self, transaction_type: str, skip: int = 0, limit: int = 100
     ) -> List[BalanceTransaction]:
         """根据交易类型获取记录"""
         return await self.balance_repo.get_transactions_by_type(
@@ -43,17 +37,13 @@ class BalanceService(BaseService):
         )
 
     async def get_recent_transactions(
-        self,
-        days: int = 7,
-        skip: int = 0,
-        limit: int = 100
+        self, days: int = 7, skip: int = 0, limit: int = 100
     ) -> List[BalanceTransaction]:
         """获取最近的交易记录"""
         return await self.balance_repo.get_recent_transactions(days, skip, limit)
 
     async def get_transaction_by_id(
-        self,
-        transaction_id: str
+        self, transaction_id: str
     ) -> Optional[BalanceTransaction]:
         """根据交易ID获取记录"""
         try:
@@ -64,24 +54,21 @@ class BalanceService(BaseService):
         return await self.balance_repo.get_by_transaction_id(transaction_uuid)
 
     async def get_transaction_summary(
-        self,
-        telegram_id: int,
-        days: int = 30
+        self, telegram_id: int, days: int = 30
     ) -> Dict[str, Any]:
-        """获取用户交易汇总"""
-        transactions = await self.balance_repo.get_recent_transactions(days)
-
-        # 筛选用户的交易
-        user_transactions = [t for t in transactions if t.telegram_id == telegram_id]
+        """获取用户交易汇总（按用户 + 时间窗口查询，避免全局 limit 截断导致统计偏小）"""
+        user_transactions = await self.balance_repo.get_user_transactions_in_period(
+            telegram_id, days
+        )
 
         summary = {
             "total_transactions": len(user_transactions),
             "deposit_count": 0,
             "withdrawal_count": 0,
             "refund_count": 0,
-            "total_deposit_amount": Decimal('0.0000'),
-            "total_withdrawal_amount": Decimal('0.0000'),
-            "total_refund_amount": Decimal('0.0000')
+            "total_deposit_amount": Decimal("0"),
+            "total_withdrawal_amount": Decimal("0"),
+            "total_refund_amount": Decimal("0"),
         }
 
         for transaction in user_transactions:

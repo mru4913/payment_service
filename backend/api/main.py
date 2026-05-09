@@ -9,17 +9,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from fastapi import Depends
+
 from .routers import (
     users_router,
     payments_router,
+    payments_public_router,
     balance_router,
-    health_router
+    health_router,
 )
 from .middleware import (
     setup_cors_middleware,
     setup_trusted_host_middleware,
-    LoggingMiddleware
+    LoggingMiddleware,
+    CallbackRateLimitMiddleware,
 )
+from .auth import verify_api_key
 from ..globals import settings
 
 
@@ -32,7 +37,7 @@ def create_api_app() -> FastAPI:
         version="1.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
-        openapi_url="/openapi.json"
+        openapi_url="/openapi.json",
     )
 
     # 添加中间件
@@ -40,30 +45,28 @@ def create_api_app() -> FastAPI:
 
     # CORS配置
     cors_config = setup_cors_middleware(settings.cors_origins)
-    app.add_middleware(
-        CORSMiddleware,
-        **cors_config
-    )
+    app.add_middleware(CORSMiddleware, **cors_config)
 
     # Trusted Host配置
     trusted_host_config = setup_trusted_host_middleware(settings.allowed_hosts)
     app.add_middleware(TrustedHostMiddleware, **trusted_host_config)
 
-    # 注册路由
-    app.include_router(users_router)
-    app.include_router(payments_router)
-    app.include_router(balance_router)
+    app.add_middleware(
+        CallbackRateLimitMiddleware,
+        max_per_minute=settings.payment_callback_rate_limit_per_minute,
+    )
+
+    # 支付网关回调（无 API Key，由平台签名验真）
+    app.include_router(payments_public_router)
+
+    # 注册路由（需鉴权）
+    protected = [users_router, payments_router, balance_router]
+    for r in protected:
+        app.include_router(r, dependencies=[Depends(verify_api_key)])
+
+    # 健康检查无需鉴权
     app.include_router(health_router)
 
-    # 根路径
-    @app.get("/")
-    async def root():
-        """API根路径"""
-        return {
-            "message": "Welcome to TG Payment Bot Backend API",
-            "version": "1.0.0",
-            "docs": "/docs",
-            "health": "/health"
-        }
+    # 根路径由 backend.main 挂载（避免重复注册 GET /）
 
     return app

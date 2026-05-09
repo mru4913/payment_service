@@ -5,9 +5,12 @@
 API中间件配置
 """
 
+import time
+from collections import defaultdict
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-import time
+from starlette.responses import JSONResponse
 
 from ..globals import logger
 
@@ -45,7 +48,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             logger.error(
                 f"Request failed: {request.method} {request.url} - "
                 f"Error: {str(e)} - Time: {process_time:.3f}s",
-                exc_info=True
+                exc_info=True,
             )
             raise
 
@@ -62,6 +65,31 @@ def setup_cors_middleware(cors_origins: list[str]) -> dict:
 
 def setup_trusted_host_middleware(allowed_hosts: list[str]) -> dict:
     """配置信任主机中间件参数"""
-    return {
-        "allowed_hosts": allowed_hosts
-    }
+    return {"allowed_hosts": allowed_hosts}
+
+
+class CallbackRateLimitMiddleware(BaseHTTPMiddleware):
+    """支付网关回调路径按 IP 滑动窗口限流（内存计数，多实例需网关层限流）。"""
+
+    _window_sec = 60.0
+    _hits: defaultdict[str, list[float]] = defaultdict(list)
+
+    def __init__(self, app, max_per_minute: int, path_substring: str = "/callback/"):
+        super().__init__(app)
+        self.max_per_minute = max(0, max_per_minute)
+        self.path_substring = path_substring
+
+    async def dispatch(self, request: Request, call_next):
+        if self.max_per_minute > 0 and self.path_substring in request.url.path:
+            client = request.client
+            ip = client.host if client else "unknown"
+            now = time.monotonic()
+            cutoff = now - self._window_sec
+            hits = self._hits[ip]
+            while hits and hits[0] < cutoff:
+                hits.pop(0)
+            if len(hits) >= self.max_per_minute:
+                return JSONResponse(status_code=429, content={"detail": "请求过于频繁"})
+            hits.append(now)
+
+        return await call_next(request)

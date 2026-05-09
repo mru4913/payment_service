@@ -5,6 +5,7 @@
 FastAPI应用入口
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -27,7 +28,37 @@ async def lifespan(app: FastAPI):
         logger.error(f"数据库初始化失败: {e}")
         raise
 
+    # 启动 TRC20 USDT 监控后台任务
+    monitor = None
+    monitor_task = None
+    if settings.trc20_wallet_address:
+        from .payments.trc20_monitor import TRC20Monitor
+
+        monitor = TRC20Monitor(settings)
+        monitor_task = asyncio.create_task(monitor.start())
+
+    # 启动 Telegram Bot (非阻塞 polling)
+    bot_app = None
+    if settings.telegram_bot_token:
+        from frontend.payment_bot.bot import build_payment_bot
+        from frontend.runner import start_bot_polling
+
+        bot_app = build_payment_bot()
+        await start_bot_polling(bot_app)
+
     yield
+
+    # 关闭 Telegram Bot
+    if bot_app:
+        from frontend.runner import stop_bot_polling
+
+        await stop_bot_polling(bot_app)
+
+    # 关闭监控任务
+    if monitor:
+        await monitor.stop()
+    if monitor_task:
+        monitor_task.cancel()
 
     logger.info("应用关闭中...")
 
@@ -38,24 +69,19 @@ app = create_api_app()
 # 设置生命周期管理
 app.router.lifespan_context = lifespan
 
+
 # 全局异常处理
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """HTTP异常处理器"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail}
-    )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常处理器"""
     logger.error(f"未处理的异常: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "内部服务器错误"}
-    )
+    return JSONResponse(status_code=500, content={"detail": "内部服务器错误"})
 
 
 # 根路径
@@ -68,7 +94,7 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "health_db": "/health/db",
-        "health_detailed": "/health/detailed"
+        "health_detailed": "/health/detailed",
     }
 
 
@@ -80,5 +106,5 @@ if __name__ == "__main__":
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
-        log_level="info"
+        log_level="info",
     )

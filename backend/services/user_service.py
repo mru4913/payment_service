@@ -5,7 +5,7 @@
 用户业务逻辑服务
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,15 +32,24 @@ class UserService(BaseService):
 
     async def update_user(self, telegram_id: int, **update_data) -> Optional[User]:
         """更新用户信息"""
-        user = await self.user_repo.get_by_telegram_id(telegram_id)
-        if not user:
-            return None
 
-        return await self.user_repo.update(user, update_data)
+        async def _update():
+            user = await self.user_repo.get_by_telegram_id(telegram_id)
+            if not user:
+                return None
+            return await self.user_repo.update(user, update_data)
 
-    async def get_or_create_user(self, telegram_id: int, **defaults) -> User:
-        """获取或创建用户"""
-        return await self.user_repo.get_or_create(telegram_id, **defaults)
+        return await self.execute_in_transaction(_update)
+
+    async def get_or_create_user(
+        self, telegram_id: int, **defaults
+    ) -> Tuple[User, bool]:
+        """获取或创建用户，返回 (用户, 是否本次新建)。"""
+
+        async def _get_or_create():
+            return await self.user_repo.get_or_create(telegram_id, **defaults)
+
+        return await self.execute_in_transaction(_get_or_create)
 
     async def update_balance(
         self,
@@ -48,7 +57,7 @@ class UserService(BaseService):
         amount: Decimal,
         transaction_type: str,
         payment_id: Optional[str] = None,
-        description: str = ""
+        description: str = "",
     ) -> Optional[User]:
         """更新用户余额并记录交易 - 原子性操作"""
 
@@ -77,15 +86,18 @@ class UserService(BaseService):
                 balance_after_usd=new_balance,
                 transaction_type=transaction_type,
                 payment_id=payment_id,
-                description=description
+                description=description,
             )
 
             # 在同一事务中执行所有操作
-            await self.user_repo.update(user, {
-                "balance": new_balance,
-                "total_deposits": user.total_deposits,
-                "total_withdrawals": user.total_withdrawals
-            })
+            await self.user_repo.update(
+                user,
+                {
+                    "balance": new_balance,
+                    "total_deposits": user.total_deposits,
+                    "total_withdrawals": user.total_withdrawals,
+                },
+            )
             await self.balance_repo.create(transaction)
 
             return user
@@ -112,23 +124,29 @@ class UserService(BaseService):
             "is_premium": user.is_premium,
             "is_verified": user.is_verified,
             "created_at": user.created_at,
-            "display_name": user.display_name
+            "display_name": user.display_name,
         }
 
     async def deactivate_user(self, telegram_id: int) -> bool:
         """停用用户账户"""
-        user = await self.user_repo.get_by_telegram_id(telegram_id)
-        if not user:
-            return False
 
-        await self.user_repo.update(user, {"is_active": False})
-        return True
+        async def _deactivate():
+            user = await self.user_repo.get_by_telegram_id(telegram_id)
+            if not user:
+                return False
+            await self.user_repo.update(user, {"is_active": False})
+            return True
+
+        return await self.execute_in_transaction(_deactivate)
 
     async def activate_user(self, telegram_id: int) -> bool:
         """激活用户账户"""
-        user = await self.user_repo.get_by_telegram_id(telegram_id)
-        if not user:
-            return False
 
-        await self.user_repo.update(user, {"is_active": True})
-        return True
+        async def _activate():
+            user = await self.user_repo.get_by_telegram_id(telegram_id)
+            if not user:
+                return False
+            await self.user_repo.update(user, {"is_active": True})
+            return True
+
+        return await self.execute_in_transaction(_activate)

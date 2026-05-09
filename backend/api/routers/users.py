@@ -18,8 +18,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/{telegram_id}")
 async def get_user(
-    telegram_id: int,
-    user_service: UserService = Depends(user_service_read)
+    telegram_id: int, user_service: UserService = Depends(user_service_read)
 ):
     """获取用户信息"""
     user = await user_service.get_user(telegram_id)
@@ -42,7 +41,7 @@ async def get_user(
         "is_active": user.is_active,
         "created_at": user.created_at,
         "updated_at": user.updated_at,
-        "display_name": user.display_name
+        "display_name": user.display_name,
     }
 
 
@@ -57,10 +56,13 @@ async def create_or_update_user(
     is_verified: bool = False,
     is_scam: bool = False,
     is_fake: bool = False,
-    user_service: UserService = Depends(user_service_write)
+    user_service: UserService = Depends(user_service_write),
 ):
-    """创建或更新用户"""
-    user = await user_service.get_or_create_user(
+    """创建用户；若已存在则返回当前资料（不根据本次请求更新字段）。
+
+    若需改资料请后续扩展 PATCH 或使用 update_user 接口。
+    """
+    user, was_created = await user_service.get_or_create_user(
         telegram_id=telegram_id,
         telegram_username=telegram_username,
         first_name=first_name,
@@ -69,13 +71,13 @@ async def create_or_update_user(
         is_premium=is_premium,
         is_verified=is_verified,
         is_scam=is_scam,
-        is_fake=is_fake
+        is_fake=is_fake,
     )
 
     return {
         "telegram_id": user.telegram_id,
         "display_name": user.display_name,
-        "created": True if not user.created_at else False
+        "created": was_created,
     }
 
 
@@ -86,7 +88,7 @@ async def update_user_balance(
     transaction_type: str,
     description: str = "",
     payment_id: Optional[str] = None,
-    user_service: UserService = Depends(user_service_write)
+    user_service: UserService = Depends(user_service_write),
 ):
     """更新用户余额"""
     user = await user_service.update_balance(
@@ -94,7 +96,7 @@ async def update_user_balance(
         amount=amount,
         transaction_type=transaction_type,
         payment_id=payment_id,
-        description=description
+        description=description,
     )
 
     if not user:
@@ -103,30 +105,25 @@ async def update_user_balance(
     return {
         "telegram_id": user.telegram_id,
         "new_balance": user.balance,
-        "transaction_type": transaction_type
+        "transaction_type": transaction_type,
     }
 
 
 @router.get("/{telegram_id}/balance")
 async def get_user_balance(
-    telegram_id: int,
-    user_service: UserService = Depends(user_service_read)
+    telegram_id: int, user_service: UserService = Depends(user_service_read)
 ):
     """获取用户余额"""
     balance = await user_service.get_user_balance(telegram_id)
     if balance is None:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    return {
-        "telegram_id": telegram_id,
-        "balance_usd": balance
-    }
+    return {"telegram_id": telegram_id, "balance_usd": balance}
 
 
 @router.get("/{telegram_id}/stats")
 async def get_user_stats(
-    telegram_id: int,
-    user_service: UserService = Depends(user_service_read)
+    telegram_id: int, user_service: UserService = Depends(user_service_read)
 ):
     """获取用户统计信息"""
     stats = await user_service.get_user_stats(telegram_id)
@@ -141,7 +138,7 @@ async def get_user_transactions(
     telegram_id: int,
     skip: int = 0,
     limit: int = 20,
-    balance_service: BalanceService = Depends(balance_service_read)
+    balance_service: BalanceService = Depends(balance_service_read),
 ):
     """获取用户余额交易记录"""
     transactions = await balance_service.get_user_transactions(telegram_id, skip, limit)
@@ -157,18 +154,17 @@ async def get_user_transactions(
                 "transaction_type": t.transaction_type,
                 "payment_id": str(t.payment_id) if t.payment_id else None,
                 "description": t.description,
-                "created_at": t.created_at
+                "created_at": t.created_at,
             }
             for t in transactions
         ],
-        "total": len(transactions)
+        "total": len(transactions),
     }
 
 
 @router.put("/{telegram_id}/deactivate")
 async def deactivate_user(
-    telegram_id: int,
-    user_service: UserService = Depends(user_service_write)
+    telegram_id: int, user_service: UserService = Depends(user_service_write)
 ):
     """停用用户账户"""
     success = await user_service.deactivate_user(telegram_id)
@@ -180,8 +176,7 @@ async def deactivate_user(
 
 @router.put("/{telegram_id}/activate")
 async def activate_user(
-    telegram_id: int,
-    user_service: UserService = Depends(user_service_write)
+    telegram_id: int, user_service: UserService = Depends(user_service_write)
 ):
     """激活用户账户"""
     success = await user_service.activate_user(telegram_id)

@@ -16,20 +16,15 @@ class BaseService:
         self.db_session = db_session
 
     async def execute_in_transaction(
-        self,
-        operation: Callable[[], Awaitable[Any]]
+        self, operation: Callable[[], Awaitable[Any]]
     ) -> Any:
         """在事务上下文中执行操作
 
-        Args:
-            operation: 异步操作函数，无参数
-
-        Returns:
-            操作结果
-
-        Raises:
-            重新抛出操作中的异常，事务会自动回滚
+        若当前会话已在事务中（例如 PaymentService 嵌套调用 UserService），
+        则不再调用 begin()，避免 SQLAlchemy 抛出「事务已开启」错误。
         """
+        if self.db_session.in_transaction():
+            return await operation()
         async with self.db_session.begin():
             return await operation()
 
