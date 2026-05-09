@@ -5,7 +5,7 @@
 用户数据访问层
 """
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,13 +43,13 @@ class UserRepository(BaseRepository[User]):
         result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_or_create(self, telegram_id: int, **defaults) -> User:
-        """获取或创建用户"""
+    async def get_or_create(self, telegram_id: int, **defaults) -> Tuple[User, bool]:
+        """获取或创建用户。返回 (用户, 是否本次新建)。"""
         user = await self.get_by_telegram_id(telegram_id)
         if user:
-            return user
+            return user, False
 
-        # 创建新用户
         user_data = {"telegram_id": telegram_id, **defaults}
         user = User(**user_data)
-        return await self.create(user)
+        created = await self.create(user)
+        return created, True

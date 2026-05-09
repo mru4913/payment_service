@@ -14,4 +14,5 @@ class Base(DeclarativeBase):
     SQLAlchemy DeclarativeBase 的基类。
     所有ORM模型都应继承自此基类。
     """
+
     pass

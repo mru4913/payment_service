@@ -11,5 +11,5 @@ __all__ = [
     "BaseRepository",
     "UserRepository",
     "PaymentRepository",
-    "BalanceTransactionRepository"
+    "BalanceTransactionRepository",
 ]

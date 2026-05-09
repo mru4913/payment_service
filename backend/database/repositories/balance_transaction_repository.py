@@ -21,8 +21,7 @@ class BalanceTransactionRepository(BaseRepository[BalanceTransaction]):
         super().__init__(BalanceTransaction, db_session)
 
     async def get_by_transaction_id(
-        self,
-        transaction_id: uuid.UUID
+        self, transaction_id: uuid.UUID
     ) -> Optional[BalanceTransaction]:
         """根据交易ID获取记录"""
         stmt = select(BalanceTransaction).where(
@@ -32,10 +31,7 @@ class BalanceTransactionRepository(BaseRepository[BalanceTransaction]):
         return result.scalar_one_or_none()
 
     async def get_user_transactions(
-        self,
-        telegram_id: int,
-        skip: int = 0,
-        limit: int = 20
+        self, telegram_id: int, skip: int = 0, limit: int = 20
     ) -> List[BalanceTransaction]:
         """获取用户的余额交易记录"""
         stmt = (
@@ -48,11 +44,30 @@ class BalanceTransactionRepository(BaseRepository[BalanceTransaction]):
         result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_transactions_by_type(
+    async def get_user_transactions_in_period(
         self,
-        transaction_type: str,
-        skip: int = 0,
-        limit: int = 100
+        telegram_id: int,
+        days: int,
+        limit: int = 5000,
+    ) -> List[BalanceTransaction]:
+        """某用户在最近 days 天内的交易（按时间倒序，用于汇总统计）。"""
+        from datetime import datetime, timedelta, timezone
+
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        stmt = (
+            select(BalanceTransaction)
+            .where(
+                BalanceTransaction.telegram_id == telegram_id,
+                BalanceTransaction.created_at >= cutoff_date,
+            )
+            .order_by(desc(BalanceTransaction.created_at))
+            .limit(limit)
+        )
+        result = await self.db_session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_transactions_by_type(
+        self, transaction_type: str, skip: int = 0, limit: int = 100
     ) -> List[BalanceTransaction]:
         """根据交易类型获取记录"""
         stmt = (
@@ -66,13 +81,11 @@ class BalanceTransactionRepository(BaseRepository[BalanceTransaction]):
         return list(result.scalars().all())
 
     async def get_recent_transactions(
-        self,
-        days: int = 7,
-        skip: int = 0,
-        limit: int = 100
+        self, days: int = 7, skip: int = 0, limit: int = 100
     ) -> List[BalanceTransaction]:
         """获取最近的交易记录"""
         from datetime import datetime, timedelta, timezone
+
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         stmt = (
