@@ -72,6 +72,8 @@ tg-payment-bot/
 │   │   ├── base.py              # 支付提供商接口
 │   │   ├── alipay.py            # 支付宝集成
 │   │   ├── wechat.py            # 微信支付集成
+│   │   ├── trc20_usdt.py        # TRC20 USDT 链上支付提供商
+│   │   ├── trc20_monitor.py     # TRC20 USDT 链上到账监控后台任务
 │   │   └── callbacks.py         # 支付回调处理
 │   └── utils/                   # 🛠️ 工具模块
 │       ├── __init__.py
@@ -158,6 +160,7 @@ tg-payment-bot/
 | **Web框架** | FastAPI | 最新稳定版 | 高性能异步Web框架，自动生成API文档 |
 | **Bot框架** | python-telegram-bot | 20.7+ | Telegram官方Bot框架，支持异步操作 |
 | **数据库** | PostgreSQL | 18+ | 强大的开源关系型数据库 |
+| **HTTP客户端** | httpx | 0.28+ | 异步HTTP客户端，用于TronScan API调用 |
 | **ORM** | SQLAlchemy | 2.0+ | 现代Python ORM，支持异步操作 |
 | **项目管理** | uv | 最新版 | 快速的Python包管理器 |
 | **代码格式化** | Ruff | 最新版 | 快速的Python代码检查和格式化工具 |
@@ -205,6 +208,11 @@ ALIPAY_APP_ID=your_alipay_app_id
 ALIPAY_PRIVATE_KEY=your_private_key
 WECHAT_APP_ID=your_wechat_app_id
 WECHAT_MCH_ID=your_merchant_id
+
+# TRC20 USDT 配置
+TRC20_WALLET_ADDRESS=your_trc20_wallet_address    # 设置后自动启用链上监控
+TRC20_CHECK_INTERVAL=15                            # 轮询间隔(秒)，默认15
+TRC20_ORDER_TIMEOUT_MINUTES=15                     # 订单超时(分钟)，默认15
 
 # 应用配置
 APP_ENV=development
@@ -376,7 +384,10 @@ chore: 构建过程或工具配置更新
 ## 10. 常见问题
 
 ### Q: 如何添加新的支付方式？
-A: 在 `backend/payments/` 目录下创建新的支付提供商文件，实现统一的接口。
+A: 在 `backend/payments/` 目录下创建新的支付提供商文件，继承 `PaymentProvider` 基类实现统一接口，然后在 `callbacks.py` 中注册。参考 `trc20_usdt.py` 的实现。
+
+### Q: TRC20 USDT 支付如何工作？
+A: 用户创建充值订单后获得收款地址和唯一金额，转账后后台 `TRC20Monitor` 每15秒轮询 TronScan API，按金额自动匹配订单并完成充值。在 `.env` 中设置 `TRC20_WALLET_ADDRESS` 即可启用。
 
 ### Q: 如何修改Bot命令？
 A: 在 `frontend/commands.py` 中添加新的命令处理函数，并在 `bot.py` 中注册。

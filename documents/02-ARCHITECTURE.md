@@ -26,15 +26,15 @@
 │  │         │                      │                                 │  │
 │  │         ▼                      ▼                                 │  │
 │  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐            │  │
-  │  │         │    │   支付宝     │    │   微信支付   │            │  │
-│  │  │ (外部集成)  │    │  (外部集成)   │    │  (外部集成) │            │  │
+│  │  │   支付宝    │    │   微信支付   │    │ TRC20 USDT  │            │  │
+│  │  │  (外部集成)  │    │ (外部集成)   │    │(TronScan轮询)│            │  │
 │  │  └─────────────┘    └─────────────┘    └─────────────┘            │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │                          基础设施层                                  │  │
 │  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐               │  │
-│  │  │   Docker    │    │   Redis     │    │  监控系统   │               │  │
-│  │  │ 容器化环境   │    │ 缓存&队列   │    │            │               │  │
+│  │  │   Docker    │    │Redis (可选) │    │  监控系统   │               │  │
+│  │  │ 容器化环境   │    │多实例时引入  │    │            │               │  │
 │  │  └─────────────┘    └─────────────┘    │            │               │  │
 │  └─────────────────────────────────────────┼─────────────┘               │  │
 └────────────────────────────────────────────┼───────────────────────────────┘
@@ -46,8 +46,8 @@
 1. **用户指令接收**：Telegram用户发送支付指令（如：`/pay 100 USD alipay`）
 2. **指令解析与验证**：Bot解析指令，验证用户身份和参数有效性
 3. **支付请求处理**：生成支付请求，选择对应的支付方式
-4. **外部支付集成**：调用支付宝、微信支付平台的API
-5. **支付状态管理**：实时跟踪支付状态，更新用户余额
+4. **外部支付集成**：调用支付宝、微信支付平台的API，或返回TRC20收款地址
+5. **支付状态管理**：实时跟踪支付状态（TRC20通过后台轮询TronScan自动检测到账），更新用户余额
 6. **结果通知**：通过Telegram通知用户支付结果和余额变动
 
 ### 1.4 美元基准设计原则
@@ -218,9 +218,9 @@ CREATE TABLE users (
     is_fake BOOLEAN DEFAULT false,   -- 是否标记为假账号
 
     -- 财务字段
-    balance DECIMAL(15,4) DEFAULT 0.0000,  -- 用户余额(美元)
-    total_deposits DECIMAL(15,4) DEFAULT 0.0000,  -- 累计充值(美元)
-    total_withdrawals DECIMAL(15,4) DEFAULT 0.0000,  -- 累计提现(美元)
+    balance DECIMAL(15,6) DEFAULT 0.000000,  -- 用户余额(美元)
+    total_deposits DECIMAL(15,6) DEFAULT 0.000000,  -- 累计充值(美元)
+    total_withdrawals DECIMAL(15,6) DEFAULT 0.000000,  -- 累计提现(美元)
 
     -- 用户偏好设置
     preferences JSONB,  -- 用户偏好设置（JSON对象）
@@ -241,7 +241,7 @@ CREATE TABLE users (
 CREATE TABLE payments (
     payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     telegram_id BIGINT REFERENCES users(telegram_id),
-    amount_usd DECIMAL(15,4) NOT NULL,  -- 支付金额(美元)
+    amount_usd DECIMAL(15,6) NOT NULL,  -- 支付金额(美元)
     payment_method VARCHAR(50) NOT NULL,  -- 支付方式
     status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- 支付状态
     external_payment_id VARCHAR(255),  -- 外部支付平台订单ID
@@ -256,9 +256,9 @@ CREATE TABLE payments (
 CREATE TABLE balance_transactions (
     transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     telegram_id BIGINT REFERENCES users(telegram_id),
-    amount_usd DECIMAL(15,4) NOT NULL,  -- 变动金额(美元)
-    balance_before_usd DECIMAL(15,4) NOT NULL,  -- 变动前余额(美元)
-    balance_after_usd DECIMAL(15,4) NOT NULL,  -- 变动后余额(美元)
+    amount_usd DECIMAL(15,6) NOT NULL,  -- 变动金额(美元)
+    balance_before_usd DECIMAL(15,6) NOT NULL,  -- 变动前余额(美元)
+    balance_after_usd DECIMAL(15,6) NOT NULL,  -- 变动后余额(美元)
     transaction_type VARCHAR(20) NOT NULL,  -- 'deposit', 'withdraw', 'payment', 'refund'
     payment_id UUID REFERENCES payments(payment_id),  -- 关联支付ID
     description TEXT,
@@ -301,9 +301,9 @@ class User(Base):
     is_fake = Column(Boolean, nullable=False, default=False, comment='是否标记为假账号')
 
     # 财务信息
-    balance = Column(Numeric(15, 4), nullable=False, default=0.0000, comment='用户余额(美元)')
-    total_deposits = Column(Numeric(15, 4), nullable=False, default=0.0000, comment='累计充值(美元)')
-    total_withdrawals = Column(Numeric(15, 4), nullable=False, default=0.0000, comment='累计提现(美元)')
+    balance = Column(Numeric(15, 6), nullable=False, default=0.000000, comment='用户余额(美元)')
+    total_deposits = Column(Numeric(15, 6), nullable=False, default=0.000000, comment='累计充值(美元)')
+    total_withdrawals = Column(Numeric(15, 6), nullable=False, default=0.000000, comment='累计提现(美元)')
 
     # 用户偏好设置
     preferences = Column(JSONB, comment='用户偏好设置（JSON对象）')
@@ -330,7 +330,7 @@ class Payment(Base):
 
     payment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment='支付ID')
     telegram_id = Column(Integer, ForeignKey('users.telegram_id'), nullable=False, comment='用户ID')
-    amount_usd = Column(Numeric(15, 4), nullable=False, comment='支付金额(美元)')
+    amount_usd = Column(Numeric(15, 6), nullable=False, comment='支付金额(美元)')
     payment_method = Column(String(50), nullable=False, comment='支付方式')
     status = Column(String(20), nullable=False, default='pending', comment='支付状态')
     external_payment_id = Column(String(255), comment='外部支付平台订单ID')
@@ -346,9 +346,9 @@ class BalanceTransaction(Base):
 
     transaction_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment='交易ID')
     telegram_id = Column(Integer, ForeignKey('users.telegram_id'), nullable=False, comment='用户ID')
-    amount_usd = Column(Numeric(15, 4), nullable=False, comment='变动金额(美元)')
-    balance_before_usd = Column(Numeric(15, 4), nullable=False, comment='变动前余额(美元)')
-    balance_after_usd = Column(Numeric(15, 4), nullable=False, comment='变动后余额(美元)')
+    amount_usd = Column(Numeric(15, 6), nullable=False, comment='变动金额(美元)')
+    balance_before_usd = Column(Numeric(15, 6), nullable=False, comment='变动前余额(美元)')
+    balance_after_usd = Column(Numeric(15, 6), nullable=False, comment='变动后余额(美元)')
     transaction_type = Column(String(20), nullable=False, comment='交易类型')
     payment_id = Column(UUID(as_uuid=True), ForeignKey('payments.payment_id'), comment='关联支付ID')
     description = Column(Text, comment='交易描述')
@@ -383,7 +383,8 @@ class PaymentFactory:
     def get_provider(method: str) -> PaymentProvider:
         providers = {
             'alipay': AlipayProvider(),
-            'wechat': WechatProvider()
+            'wechat': WechatProvider(),
+            'trc20_usdt': TRC20UsdtProvider()
         }
         return providers.get(method.lower())
 ```
@@ -417,6 +418,32 @@ class AlipayProvider(PaymentProvider):
             status='pending',
             payment_url=f"https://openapi.alipay.com/gateway.do?{order_string}"
         )
+```
+
+#### 3.1.3 TRC20 USDT 链上支付集成
+```python
+class TRC20UsdtProvider(PaymentProvider):
+    """TRC20 USDT 支付提供商 - 通过轮询 TronScan API 检测链上到账"""
+
+    async def create_payment(self, request: PaymentRequest) -> PaymentResult:
+        # 不实际调链，返回收款地址和唯一化金额
+        # 金额尾数随机化（6位小数）确保订单唯一可匹配
+        unique_amount = self._make_unique_amount(request.amount_usd)
+        return PaymentResult(
+            payment_id=request.payment_id,
+            metadata={
+                "wallet_address": self.wallet_address,
+                "amount_usdt": str(unique_amount),
+                "network": "TRC20",
+            }
+        )
+
+# TRC20Monitor 后台任务（在 FastAPI lifespan 中启动）
+# - 每 15 秒轮询 TronScan API 获取最近 USDT TRC20 转入
+# - 按金额精确匹配 pending 订单
+# - 匹配成功自动调用 PaymentService.confirm_payment()
+# - 超时未匹配的订单自动取消（默认 15 分钟）
+# - 到账后通过 Telegram Bot API 通知用户
 ```
 
 #### 3.1.4 微信支付集成
@@ -473,10 +500,12 @@ class WechatProvider(PaymentProvider):
 
 4. 外部支付集成
    根据payment_method → 调用对应支付平台API
-   生成支付链接/二维码 → 返回给用户
+   支付宝/微信: 生成支付链接/二维码 → 返回给用户
+   TRC20 USDT: 返回收款地址 + 唯一化金额 → 用户自行转账
 
 5. 支付状态同步和余额更新 (美元基准)
-   支付平台回调 → 验证签名 → 更新Payment状态
+   支付宝/微信: 支付平台回调 → 验证签名 → 更新Payment状态
+   TRC20 USDT: 后台轮询TronScan → 按金额匹配pending订单 → 更新状态
    支付成功 → 更新用户balance_usd → 创建BalanceTransaction记录
 
 6. 结果通知和审计
@@ -516,17 +545,17 @@ class WechatProvider(PaymentProvider):
 
 ### 5.1 开发环境架构
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Local Dev     │    │   PostgreSQL    │    │   Redis (可选)  │
-│   Environment   │    │   (Docker)      │    │   (Docker)      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │   FastAPI +     │
-                    │   Telegram Bot  │
-                    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐
+│   Local Dev     │    │   PostgreSQL    │
+│   Environment   │    │   (Docker)      │
+└─────────────────┘    └─────────────────┘
+         │                       │
+         └───────────────────────┘
+                    │
+         ┌─────────────────┐
+         │   FastAPI +     │
+         │   Telegram Bot  │
+         └─────────────────┘
 ```
 
 ### 5.2 生产环境架构
@@ -539,10 +568,10 @@ class WechatProvider(PaymentProvider):
          │                       │                       │
          └───────────────────────┼───────────────────────┘
                                  │
-                    ┌─────────────────┐
-                    │   Redis Cache   │
-                    │   & Queue       │
-                    └─────────────────┘
+         ┌───────────────────────────────┐
+         │   Redis (可选，多实例部署时引入) │
+         │   缓存 & 分布式锁             │
+         └───────────────────────────────┘
 ```
 
 ### 5.3 容器化部署
@@ -652,7 +681,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ### 8.1 水平扩展
 - **无状态设计**：应用服务器可水平扩展
 - **数据库分库分表**：支持大数据量存储
-- **缓存策略**：Redis集群支持高并发
+- **缓存策略**：可选引入 Redis 集群支持高并发（当前单实例阶段无需）
 
 ### 8.2 新功能扩展
 - **插件架构**：支付方式插件化设计
