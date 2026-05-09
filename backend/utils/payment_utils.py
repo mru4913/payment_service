@@ -16,7 +16,7 @@ def generate_payment_id() -> str:
 def generate_secure_token(length: int = 32) -> str:
     """生成安全令牌"""
     alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def hash_string(text: str, salt: Optional[str] = None) -> str:
@@ -43,12 +43,12 @@ def format_currency(amount: Decimal, currency: str = "USD") -> str:
 
 def round_to_cents(amount: Decimal) -> Decimal:
     """四舍五入到分（2位小数）"""
-    return amount.quantize(Decimal('0.01'))
+    return amount.quantize(Decimal("0.01"))
 
 
-def calculate_fee(amount: Decimal, fee_rate: Decimal = Decimal('0.01')) -> Decimal:
+def calculate_fee(amount: Decimal, fee_rate: Decimal = Decimal("0.01")) -> Decimal:
     """计算手续费"""
-    return (amount * fee_rate).quantize(Decimal('0.01'))
+    return (amount * fee_rate).quantize(Decimal("0.01"))
 
 
 def is_valid_telegram_id(telegram_id: int) -> bool:
@@ -61,7 +61,7 @@ def sanitize_string(text: str, max_length: int = 255) -> str:
     if not text:
         return ""
     # 移除换行符和多余空格
-    cleaned = ' '.join(text.split())
+    cleaned = " ".join(text.split())
     return cleaned[:max_length]
 
 
@@ -69,4 +69,4 @@ def mask_sensitive_data(text: str, visible_chars: int = 4) -> str:
     """掩码敏感数据"""
     if len(text) <= visible_chars:
         return text
-    return text[:visible_chars] + '*' * (len(text) - visible_chars)
+    return text[:visible_chars] + "*" * (len(text) - visible_chars)

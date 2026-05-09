@@ -10,6 +10,7 @@ from dataclasses import dataclass
 @dataclass
 class PaymentRequest:
     """支付请求"""
+
     payment_id: str
     amount_usd: Decimal
     description: str
@@ -20,6 +21,7 @@ class PaymentRequest:
 @dataclass
 class PaymentResult:
     """支付结果"""
+
     success: bool
     payment_id: str
     external_payment_id: Optional[str] = None
@@ -31,6 +33,7 @@ class PaymentResult:
 @dataclass
 class PaymentStatus:
     """支付状态"""
+
     payment_id: str
     status: str  # pending, completed, failed, cancelled
     external_payment_id: Optional[str] = None
@@ -63,6 +66,12 @@ class PaymentProvider(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def validate_callback(self, callback_data: Dict[str, Any]) -> bool:
-        """验证回调数据"""
+    async def validate_callback(
+        self,
+        callback_data: Dict[str, Any],
+        *,
+        raw_body: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> bool:
+        """验证回调数据（微信需 raw_body + 请求头验签）。"""
         pass

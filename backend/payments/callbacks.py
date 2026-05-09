@@ -2,11 +2,15 @@
 # -*- coding: utf-8 -*-
 
 from typing import Dict, Any, Optional
+
 from fastapi import HTTPException
 
 from .alipay import AlipayProvider
 from .wechat import WeChatProvider
-from ..globals import logger
+from .trc20_usdt import TRC20UsdtProvider
+from ..database.session import async_session_maker
+from ..services.payment_service import PaymentService
+from ..globals import logger, settings
 
 
 class PaymentCallbackHandler:
@@ -15,13 +19,17 @@ class PaymentCallbackHandler:
     def __init__(self):
         self.providers = {
             "alipay": AlipayProvider(),
-            "wechat": WeChatProvider()
+            "wechat": WeChatProvider(),
+            "trc20_usdt": TRC20UsdtProvider(),
         }
 
     async def handle_callback(
         self,
         payment_method: str,
-        callback_data: Dict[str, Any]
+        callback_data: Dict[str, Any],
+        *,
+        raw_body: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """处理支付回调"""
         try:
@@ -29,20 +37,29 @@ class PaymentCallbackHandler:
             if not provider:
                 raise HTTPException(status_code=400, detail="不支持的支付方式")
 
-            # 验证回调签名
-            if not await provider.validate_callback(callback_data):
+            if not await provider.validate_callback(
+                callback_data, raw_body=raw_body, headers=headers
+            ):
                 logger.warning(f"支付回调签名验证失败: {payment_method}")
                 raise HTTPException(status_code=400, detail="签名验证失败")
 
-            # 解析回调数据
-            payment_info = self._parse_callback_data(payment_method, callback_data)
+            if payment_method == "wechat":
+                w = self.providers["wechat"]
+                assert isinstance(w, WeChatProvider)
+                try:
+                    plain = w.decrypt_callback_to_plain(callback_data)
+                except ValueError as e:
+                    logger.warning(f"微信通知解密失败: {e}")
+                    raise HTTPException(status_code=400, detail="回调解密失败") from e
+                payment_info = self._parse_wechat_callback(plain)
+            else:
+                payment_info = self._parse_callback_data(payment_method, callback_data)
+
             if not payment_info:
                 raise HTTPException(status_code=400, detail="无效的回调数据")
 
-            # 更新支付状态
             await self._update_payment_status(payment_info)
 
-            # 返回成功响应
             return self._get_success_response(payment_method)
 
         except HTTPException:
@@ -52,24 +69,21 @@ class PaymentCallbackHandler:
             raise HTTPException(status_code=500, detail="回调处理失败")
 
     def _parse_callback_data(
-        self,
-        payment_method: str,
-        callback_data: Dict[str, Any]
+        self, payment_method: str, callback_data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """解析回调数据"""
         try:
             if payment_method == "alipay":
                 return self._parse_alipay_callback(callback_data)
-            elif payment_method == "wechat":
-                return self._parse_wechat_callback(callback_data)
-            else:
-                return None
+            return None
         except Exception as e:
             logger.error(f"解析回调数据失败: {e}")
             return None
 
     def _parse_alipay_callback(self, callback_data: Dict[str, Any]) -> Dict[str, Any]:
-        """解析支付宝回调数据"""
+        app_id = settings.alipay_app_id
+        if app_id and callback_data.get("app_id") not in (None, "", app_id):
+            raise ValueError("支付宝回调 app_id 与配置不一致")
+
         return {
             "payment_id": callback_data.get("out_trade_no"),
             "external_payment_id": callback_data.get("trade_no"),
@@ -79,49 +93,75 @@ class PaymentCallbackHandler:
                 else "failed"
             ),
             "amount": callback_data.get("total_amount"),
-            "payment_method": "alipay"
+            "payment_method": "alipay",
         }
 
-    def _parse_wechat_callback(self, callback_data: Dict[str, Any]) -> Dict[str, Any]:
-        """解析微信支付回调数据"""
-        # 从微信回调的resource中解析实际数据
-        resource = callback_data.get("resource", {})
-        if not resource:
-            raise ValueError("无效的微信回调数据")
-
-        # 这里需要根据微信支付回调的具体格式解析
+    def _parse_wechat_callback(self, plain: Dict[str, Any]) -> Dict[str, Any]:
+        """解析微信 V3 解密后的 resource 明文 JSON。"""
+        amount_obj = plain.get("amount") or {}
+        total_fen = amount_obj.get("total")
+        amount_yuan = None
+        if total_fen is not None:
+            try:
+                amount_yuan = int(total_fen) / 100
+            except (TypeError, ValueError):
+                amount_yuan = None
         return {
-            "payment_id": resource.get("out_trade_no"),
-            "external_payment_id": resource.get("transaction_id"),
+            "payment_id": plain.get("out_trade_no"),
+            "external_payment_id": plain.get("transaction_id"),
             "status": (
-                "completed"
-                if resource.get("trade_state") == "SUCCESS"
-                else "failed"
+                "completed" if plain.get("trade_state") == "SUCCESS" else "failed"
             ),
-            "amount": (
-                resource.get("amount", {}).get("total") / 100
-                if resource.get("amount")
-                else None
-            ),  # 转换为元
-            "payment_method": "wechat"
+            "amount": amount_yuan,
+            "payment_method": "wechat",
         }
 
     async def _update_payment_status(self, payment_info: Dict[str, Any]):
-        """更新支付状态"""
+        payment_id = payment_info.get("payment_id")
+        external_id = payment_info.get("external_payment_id")
+        status = payment_info.get("status")
 
-        # 这里需要注入数据库会话，暂时使用简化的方式
-        # 在实际使用中，应该通过依赖注入获取db会话
-        logger.info(f"更新支付状态: {payment_info}")
+        if not payment_id or not status:
+            logger.warning(f"回调数据缺少必要字段: {payment_info}")
+            return
 
-        # TODO: 实现实际的数据库更新逻辑
-        # await PaymentService.update_payment_status(...)
-        # await BalanceService.update_balance(...)
+        async with async_session_maker() as session:
+            svc = PaymentService(session)
+
+            if status == "completed":
+                if not external_id:
+                    logger.warning(
+                        "支付成功回调缺少 external_payment_id，跳过确认以免漏记账务"
+                    )
+                    return
+                payment = await svc.confirm_payment(payment_id, external_id)
+                if payment:
+                    logger.info(
+                        f"支付确认成功: payment_id={payment_id}, "
+                        f"external_id={external_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"支付确认失败(订单不存在或非pending): payment_id={payment_id}"
+                    )
+            elif status == "failed":
+                failed = await svc.fail_payment(
+                    payment_id, "支付平台回调: 支付失败"
+                )
+                if failed:
+                    logger.info(f"支付标记失败: payment_id={payment_id}")
+                else:
+                    logger.warning(
+                        "支付失败回调未改库(订单不存在或非 pending): "
+                        f"payment_id={payment_id}"
+                    )
+            else:
+                await svc.update_payment_status(payment_id, status, external_id)
+                logger.info(f"支付状态更新: payment_id={payment_id}, status={status}")
 
     def _get_success_response(self, payment_method: str) -> Dict[str, Any]:
-        """获取成功响应"""
         if payment_method == "alipay":
             return {"code": "success", "message": "success"}
-        elif payment_method == "wechat":
+        if payment_method == "wechat":
             return {"code": "SUCCESS", "message": "成功"}
-        else:
-            return {"status": "ok"}
+        return {"status": "ok"}
