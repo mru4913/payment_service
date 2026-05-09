@@ -16,7 +16,7 @@ class DailyRotatingLogger:
         log_dir: str = "logs",
         log_level: int = logging.INFO,
         max_days: int = 15,
-        console: bool = True
+        console: bool = True,
     ):
         """
         初始化日志记录器
@@ -56,16 +56,16 @@ class DailyRotatingLogger:
                 "%(name)s | %(filename)s:%(lineno)d | "
                 "%(funcName)s() | %(message)s"
             ),
-            datefmt="%Y-%m-%d %H:%M:%S"
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
 
         # 文件处理器 - 每天轮转
         log_file = self.log_dir / f"{self.name}.log"
         file_handler = logging.handlers.TimedRotatingFileHandler(
             filename=str(log_file),
-            when='midnight',  # 每天午夜轮转
-            interval=1,       # 间隔1天
-            backupCount=self.max_days  # 保留文件数
+            when="midnight",  # 每天午夜轮转
+            interval=1,  # 间隔1天
+            backupCount=self.max_days,  # 保留文件数
         )
         file_handler.setFormatter(formatter)
         file_handler.setLevel(self.log_level)
@@ -85,7 +85,7 @@ class DailyRotatingLogger:
         log_dir: str = "logs",
         log_level: str = "INFO",
         max_days: int = 15,
-        console: bool = True
+        console: bool = True,
     ) -> logging.Logger:
         """
         设置日志配置
@@ -104,7 +104,7 @@ class DailyRotatingLogger:
             "INFO": logging.INFO,
             "WARNING": logging.WARNING,
             "ERROR": logging.ERROR,
-            "CRITICAL": logging.CRITICAL
+            "CRITICAL": logging.CRITICAL,
         }
 
         level = level_map.get(log_level.upper(), logging.INFO)
@@ -114,13 +114,12 @@ class DailyRotatingLogger:
             log_dir=log_dir,
             log_level=level,
             max_days=max_days,
-            console=console
+            console=console,
         ).get_logger()
 
     def get_logger(self) -> logging.Logger:
         """获取日志记录器实例"""
         return self.logger
-
 
 
 # 全局日志实例缓存
@@ -132,7 +131,7 @@ def get_logger(
     log_dir: str = "logs",
     log_level: int = logging.INFO,
     max_days: int = 15,
-    console: bool = True
+    console: bool = True,
 ) -> logging.Logger:
     """
     获取或创建日志记录器实例
@@ -153,6 +152,6 @@ def get_logger(
             log_dir=log_dir,
             log_level=log_level,
             max_days=max_days,
-            console=console
+            console=console,
         )
     return _logger_instances[name].get_logger()

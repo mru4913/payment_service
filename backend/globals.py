@@ -18,5 +18,5 @@ logger = DailyRotatingLogger.setup_logging(
     log_dir="logs",
     log_level="DEBUG" if settings.debug else "INFO",
     max_days=15,
-    console=True
+    console=True,
 )
