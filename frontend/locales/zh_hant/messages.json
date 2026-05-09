@@ -1,0 +1,51 @@
+{
+  "welcome": {
+    "greeting": "👋 歡迎使用支付機器人！",
+    "registered": "您的帳戶已建立成功。",
+    "returning": "歡迎回來，{name}！"
+  },
+  "recharge": {
+    "select_amount": "請選擇充值金額（USDT）：",
+    "custom_amount": "💬 自訂金額",
+    "enter_amount": "請輸入充值金額（USDT），最小 1：",
+    "confirm": "請向以下地址轉帳：\n\n💰 金額：<b>{amount} USDT</b>\n🔗 網路：TRC20\n\n📋 收款地址：\n<code>{address}</code>\n\n⚠️ 請務必轉帳 <b>精確金額</b>，否則無法自動到帳。",
+    "timeout_warning": "⏰ 請在 {minutes} 分鐘內完成轉帳",
+    "pending_exists": "⚠️ 您有一筆未完成的充值訂單（{amount} USDT），請先完成或等待逾時。",
+    "success": "✅ 充值成功！{amount} USDT 已到帳，目前餘額 {balance} USD。",
+    "cancelled": "❌ 充值訂單已逾時取消。",
+    "invalid_amount": "請輸入有效的金額（最小 1 USDT，最大 10000 USDT）。",
+    "order_created": "✅ 充值訂單已建立",
+    "cancel_confirm": "訂單已取消。"
+  },
+  "balance": {
+    "title": "💰 帳戶資訊",
+    "current": "目前餘額：<b>{balance}</b> USD",
+    "total_deposit": "累計充值：{deposits} USD",
+    "total_withdraw": "累計消費：{withdrawals} USD"
+  },
+  "history": {
+    "title": "📋 交易記錄",
+    "empty": "暫無交易記錄。",
+    "entry": "{icon} {type_name} | {amount} USD | {time}",
+    "page": "第 {current}/{total} 頁",
+    "no_more": "沒有更多記錄了。",
+    "type_deposit": "充值",
+    "type_withdraw": "消費",
+    "type_refund": "退款",
+    "type_payment": "支付",
+    "prev": "⬅️ 上一頁",
+    "next": "下一頁 ➡️"
+  },
+  "language": {
+    "select": "🌐 請選擇語言：",
+    "changed": "✅ 語言已切換為：{lang}"
+  },
+  "common": {
+    "error": "❌ 操作失敗，請稍後重試。",
+    "help_title": "📖 可用指令",
+    "help_text": "/start - 開始使用\n/recharge - 充值 USDT\n/balance - 查詢餘額\n/history - 交易記錄\n/lang - 切換語言\n/help - 幫助資訊",
+    "unknown": "未知指令，請輸入 /help 查看幫助。",
+    "btn_check_status": "🔍 查詢狀態",
+    "btn_cancel": "❌ 取消訂單"
+  }
+}

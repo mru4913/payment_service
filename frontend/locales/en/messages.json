@@ -1,0 +1,51 @@
+{
+  "welcome": {
+    "greeting": "👋 Welcome to Payment Bot!",
+    "registered": "Your account has been created.",
+    "returning": "Welcome back, {name}!"
+  },
+  "recharge": {
+    "select_amount": "Select top-up amount (USDT):",
+    "custom_amount": "💬 Custom amount",
+    "enter_amount": "Enter top-up amount (USDT), minimum 1:",
+    "confirm": "Please transfer to the following address:\n\n💰 Amount: <b>{amount} USDT</b>\n🔗 Network: TRC20\n\n📋 Receiving address:\n<code>{address}</code>\n\n⚠️ Please transfer the <b>exact amount</b>, otherwise auto-confirmation will fail.",
+    "timeout_warning": "⏰ Please complete the transfer within {minutes} minutes",
+    "pending_exists": "⚠️ You have a pending top-up order ({amount} USDT). Please complete it or wait for timeout.",
+    "success": "✅ Top-up successful! {amount} USDT received. Current balance: {balance} USD.",
+    "cancelled": "❌ Top-up order has timed out and been cancelled.",
+    "invalid_amount": "Please enter a valid amount (min 1 USDT, max 10000 USDT).",
+    "order_created": "✅ Top-up order created",
+    "cancel_confirm": "Order cancelled."
+  },
+  "balance": {
+    "title": "💰 Account Info",
+    "current": "Balance: <b>{balance}</b> USD",
+    "total_deposit": "Total deposits: {deposits} USD",
+    "total_withdraw": "Total spent: {withdrawals} USD"
+  },
+  "history": {
+    "title": "📋 Transaction History",
+    "empty": "No transactions yet.",
+    "entry": "{icon} {type_name} | {amount} USD | {time}",
+    "page": "Page {current}/{total}",
+    "no_more": "No more records.",
+    "type_deposit": "Deposit",
+    "type_withdraw": "Withdrawal",
+    "type_refund": "Refund",
+    "type_payment": "Payment",
+    "prev": "⬅️ Previous",
+    "next": "Next ➡️"
+  },
+  "language": {
+    "select": "🌐 Please select language:",
+    "changed": "✅ Language changed to: {lang}"
+  },
+  "common": {
+    "error": "❌ Operation failed. Please try again later.",
+    "help_title": "📖 Available Commands",
+    "help_text": "/start - Get started\n/recharge - Top up USDT\n/balance - Check balance\n/history - Transaction history\n/lang - Change language\n/help - Help",
+    "unknown": "Unknown command. Type /help for help.",
+    "btn_check_status": "🔍 Check status",
+    "btn_cancel": "❌ Cancel order"
+  }
+}
