@@ -10,5 +10,7 @@ wheels/
 .venv
 .cursor/
 .ruff_cache/
+.pytest_cache/
 milestone*/
 logs/
+.env
