@@ -1,7 +1,7 @@
 [project]
-name = "tg-payment-bot"
+name = "eshow"
 version = "0.1.0"
-description = "Telegram Payment Bot with USD baseline design"
+description = "Eshow（易修）— Telegram 支付与算力服务（美元基准）"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
@@ -22,11 +22,14 @@ classifiers = [
 dependencies = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
+    "celery[redis]>=5.6.3",
     "cryptography>=48.0.0",
-    "fastapi[standard]>=0.124.4",
+    "fastapi[standard]>=0.136.1",
     "httpx>=0.28.1",
     "pydantic-settings>=2.12.0",
     "python-telegram-bot>=22.5",
+    "pyyaml>=6.0.3",
+    "redis>=6.4.0",
     "sqlalchemy[asyncio]>=2.0.45",
 ]
 
@@ -64,8 +67,8 @@ indent-width = 4
 target-version = "py312"
 
 [tool.ruff.lint]
-# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
-select = ["E", "F"]
+# E/F：基础风格与未使用等；PLC0415：禁止函数内 import（除非 noqa，见延迟加载 Celery）
+select = ["E", "F", "PLC0415"]
 ignore = []
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -87,6 +90,12 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests/backend", "tests/frontend"]
+pythonpath = ["."]
+faulthandler_timeout = 30
 
 [dependency-groups]
 dev = [

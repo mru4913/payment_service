@@ -10,9 +10,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-from .database.session import create_tables
+from frontend.bot.bot import build_telegram_app
+from frontend.runner import start_bot_polling, stop_bot_polling
+
 from .api.main import create_api_app
+from .database.session import create_tables
 from .globals import logger, settings
+from .payments.trc20_monitor import TRC20Monitor
 
 
 @asynccontextmanager
@@ -32,26 +36,19 @@ async def lifespan(app: FastAPI):
     monitor = None
     monitor_task = None
     if settings.trc20_wallet_address:
-        from .payments.trc20_monitor import TRC20Monitor
-
         monitor = TRC20Monitor(settings)
         monitor_task = asyncio.create_task(monitor.start())
 
     # 启动 Telegram Bot (非阻塞 polling)
     bot_app = None
     if settings.telegram_bot_token:
-        from frontend.payment_bot.bot import build_payment_bot
-        from frontend.runner import start_bot_polling
-
-        bot_app = build_payment_bot()
+        bot_app = build_telegram_app()
         await start_bot_polling(bot_app)
 
     yield
 
     # 关闭 Telegram Bot
     if bot_app:
-        from frontend.runner import stop_bot_polling
-
         await stop_bot_polling(bot_app)
 
     # 关闭监控任务
@@ -89,7 +86,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def root():
     """API根路径"""
     return {
-        "message": "Welcome to TG Payment Bot Backend!",
+        "message": "Welcome to Eshow (易修) API!",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",

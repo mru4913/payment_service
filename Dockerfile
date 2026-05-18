@@ -9,12 +9,14 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # 应用代码
+COPY common/ common/
 COPY backend/ backend/
 COPY frontend/ frontend/
 COPY alembic/ alembic/
 COPY alembic.ini .
 
-RUN adduser --disabled-password --no-create-home appuser
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000

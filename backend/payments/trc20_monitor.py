@@ -126,11 +126,12 @@ class TRC20Monitor:
             return
 
         async with async_session_maker() as session:
-            svc = PaymentService(session)
-            payment = await svc.confirm_payment(
-                payment_id=matched_pid,
-                external_payment_id=tx_id,
-            )
+            async with session.begin():
+                svc = PaymentService(session)
+                payment = await svc.confirm_payment(
+                    payment_id=matched_pid,
+                    external_payment_id=tx_id,
+                )
 
         if payment:
             logger.info(
@@ -171,8 +172,9 @@ class TRC20Monitor:
         for pid in expired_ids:
             try:
                 async with async_session_maker() as session:
-                    svc = PaymentService(session)
-                    await svc.cancel_payment(pid)
+                    async with session.begin():
+                        svc = PaymentService(session)
+                        await svc.cancel_payment(pid)
                     logger.info(f"TRC20 订单超时取消 | order={pid}")
             except Exception as e:
                 logger.error(f"TRC20 取消订单失败 | order={pid} | {e}")

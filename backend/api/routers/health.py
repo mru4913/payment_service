@@ -6,6 +6,7 @@
 """
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import time
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ async def health_check():
     """基础健康检查"""
     return {
         "status": "healthy",
-        "service": "tg-payment-bot-backend",
+        "service": "eshow-backend",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "1.0.0",
     }
@@ -34,8 +35,6 @@ async def database_health_check(db: AsyncSession = Depends(get_db_read)):
 
     try:
         # 执行简单的数据库查询来测试连接
-        from sqlalchemy import text
-
         await db.execute(text("SELECT 1"))
         response_time = time.time() - start_time
 
@@ -59,7 +58,7 @@ async def detailed_health_check(db: AsyncSession = Depends(get_db_read)):
     """详细健康检查"""
     health_info = {
         "status": "healthy",
-        "service": "tg-payment-bot-backend",
+        "service": "eshow-backend",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": {},
     }
@@ -67,8 +66,6 @@ async def detailed_health_check(db: AsyncSession = Depends(get_db_read)):
     # 数据库检查
     start_time = time.time()
     try:
-        from sqlalchemy import text
-
         await db.execute(text("SELECT COUNT(*) FROM users"))
         db_response_time = time.time() - start_time
         health_info["checks"]["database"] = {

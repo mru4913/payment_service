@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from ...services import PaymentService
 from ...payments.callbacks import PaymentCallbackHandler
+from ...globals import settings
 from ..dependencies import payment_service_read, payment_service_write
 
 
@@ -61,9 +62,35 @@ async def create_payment(
     description: str = "",
     payment_service: PaymentService = Depends(payment_service_write),
 ):
-    """创建支付订单"""
+    """创建支付订单。
+
+    ``payment_method == trc20_usdt`` 时由服务端生成唯一链上金额并写入
+    ``metadata``；响应含 ``order_timeout_minutes`` 供展示超时提示。
+    """
     if amount_usd <= 0:
         raise HTTPException(status_code=400, detail="支付金额必须大于0")
+
+    if payment_method == "trc20_usdt":
+        payment, err = await payment_service.create_trc20_usdt_payment(
+            telegram_id=telegram_id,
+            base_amount_usd=amount_usd,
+            description=description,
+        )
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        if payment is None:
+            raise HTTPException(status_code=500, detail="TRC20 创建结果异常")
+        return {
+            "payment_id": str(payment.payment_id),
+            "telegram_id": payment.telegram_id,
+            "amount_usd": payment.amount_usd,
+            "payment_method": payment.payment_method,
+            "status": payment.status,
+            "description": payment.description,
+            "created_at": payment.created_at,
+            "metadata": payment.payment_metadata,
+            "order_timeout_minutes": settings.trc20_order_timeout_minutes,
+        }
 
     payment = await payment_service.create_payment(
         telegram_id=telegram_id,
@@ -90,10 +117,16 @@ async def create_payment(
 async def get_pending_payments(
     skip: int = 0,
     limit: int = 100,
+    telegram_id: Optional[int] = None,
     payment_service: PaymentService = Depends(payment_service_read),
 ):
-    """获取待处理的支付"""
-    payments = await payment_service.get_pending_payments(skip, limit)
+    """获取待处理的支付；可选 ``telegram_id`` 仅返回该用户的 pending。
+
+    ``total`` 为符合筛选条件的 pending 总条数；``returned`` 为本响应 ``payments``
+    条数（≤ ``limit``）。
+    """
+    total = await payment_service.count_pending_payments(telegram_id)
+    payments = await payment_service.get_pending_payments(skip, limit, telegram_id)
 
     return {
         "payments": [
@@ -107,7 +140,8 @@ async def get_pending_payments(
             }
             for p in payments
         ],
-        "total": len(payments),
+        "total": total,
+        "returned": len(payments),
     }
 
 
@@ -118,10 +152,14 @@ async def get_payments_by_status(
     limit: int = 100,
     payment_service: PaymentService = Depends(payment_service_read),
 ):
-    """根据状态获取支付记录"""
+    """根据状态获取支付记录。
+
+    ``total`` 为该 ``status`` 下总条数；``returned`` 为本页条数（≤ ``limit``）。
+    """
     if status not in ["pending", "completed", "cancelled", "failed"]:
         raise HTTPException(status_code=400, detail="无效的支付状态")
 
+    total = await payment_service.count_payments_by_status(status)
     payments = await payment_service.get_payments_by_status(status, skip, limit)
 
     return {
@@ -137,7 +175,8 @@ async def get_payments_by_status(
             }
             for p in payments
         ],
-        "total": len(payments),
+        "total": total,
+        "returned": len(payments),
     }
 
 
@@ -148,7 +187,11 @@ async def get_user_payments(
     limit: int = 20,
     payment_service: PaymentService = Depends(payment_service_read),
 ):
-    """获取用户的支付记录"""
+    """获取用户的支付记录。
+
+    ``total`` 为该用户支付记录总条数；``returned`` 为本页条数（≤ ``limit``）。
+    """
+    total = await payment_service.count_user_payments(telegram_id)
     payments = await payment_service.get_user_payments(telegram_id, skip, limit)
 
     return {
@@ -166,7 +209,8 @@ async def get_user_payments(
             }
             for p in payments
         ],
-        "total": len(payments),
+        "total": total,
+        "returned": len(payments),
     }
 
 

@@ -125,39 +125,42 @@ class PaymentCallbackHandler:
             logger.warning(f"回调数据缺少必要字段: {payment_info}")
             return
 
-        async with async_session_maker() as session:
-            svc = PaymentService(session)
+        if status == "completed" and not external_id:
+            logger.warning("支付成功回调缺少 external_payment_id，跳过确认以免漏记账务")
+            return
 
-            if status == "completed":
-                if not external_id:
-                    logger.warning(
-                        "支付成功回调缺少 external_payment_id，跳过确认以免漏记账务"
+        async with async_session_maker() as session:
+            async with session.begin():
+                svc = PaymentService(session)
+
+                if status == "completed":
+                    payment = await svc.confirm_payment(payment_id, external_id)
+                    if payment:
+                        logger.info(
+                            f"支付确认成功: payment_id={payment_id}, "
+                            f"external_id={external_id}"
+                        )
+                    else:
+                        logger.warning(
+                            "支付确认失败(订单不存在或非pending): "
+                            f"payment_id={payment_id}"
+                        )
+                elif status == "failed":
+                    failed = await svc.fail_payment(
+                        payment_id, "支付平台回调: 支付失败"
                     )
-                    return
-                payment = await svc.confirm_payment(payment_id, external_id)
-                if payment:
+                    if failed:
+                        logger.info(f"支付标记失败: payment_id={payment_id}")
+                    else:
+                        logger.warning(
+                            "支付失败回调未改库(订单不存在或非 pending): "
+                            f"payment_id={payment_id}"
+                        )
+                else:
+                    await svc.update_payment_status(payment_id, status, external_id)
                     logger.info(
-                        f"支付确认成功: payment_id={payment_id}, "
-                        f"external_id={external_id}"
+                        f"支付状态更新: payment_id={payment_id}, status={status}"
                     )
-                else:
-                    logger.warning(
-                        f"支付确认失败(订单不存在或非pending): payment_id={payment_id}"
-                    )
-            elif status == "failed":
-                failed = await svc.fail_payment(
-                    payment_id, "支付平台回调: 支付失败"
-                )
-                if failed:
-                    logger.info(f"支付标记失败: payment_id={payment_id}")
-                else:
-                    logger.warning(
-                        "支付失败回调未改库(订单不存在或非 pending): "
-                        f"payment_id={payment_id}"
-                    )
-            else:
-                await svc.update_payment_status(payment_id, status, external_id)
-                logger.info(f"支付状态更新: payment_id={payment_id}, status={status}")
 
     def _get_success_response(self, payment_method: str) -> Dict[str, Any]:
         if payment_method == "alipay":

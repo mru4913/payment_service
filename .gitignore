@@ -14,3 +14,10 @@ wheels/
 milestone*/
 logs/
 .env
+.env.test
+
+
+AGENTS.md
+data/uploads/
+experiments/
+dataset/

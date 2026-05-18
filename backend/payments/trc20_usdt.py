@@ -17,8 +17,9 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..database.models import Payment
+from ..globals import logger, settings
 from .base import PaymentProvider, PaymentRequest, PaymentResult, PaymentStatus
-from ..globals import settings, logger
 
 USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 TRONSCAN_API = "https://apilist.tronscan.org/api/token_trc20/transfers"
@@ -82,8 +83,6 @@ class TRC20UsdtProvider(PaymentProvider):
                 payment_id=request.payment_id,
                 error_message="TRC20 收款地址未配置",
             )
-
-        from ..database.models import Payment
 
         existing_stmt = select(Payment.amount_usd).where(
             Payment.payment_method == "trc20_usdt",

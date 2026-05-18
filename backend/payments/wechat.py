@@ -4,8 +4,9 @@
 import base64
 import hashlib
 import json
+import time
 import uuid
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -183,8 +184,6 @@ class WeChatProvider(PaymentProvider):
         return decrypt_wechat_notify_resource(resource, self.api_v3_key)
 
     def _get_timestamp(self) -> float:
-        import time
-
         return time.time()
 
     def _generate_sign(

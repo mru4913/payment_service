@@ -14,7 +14,7 @@ settings = Settings()
 
 # 配置日志系统
 logger = DailyRotatingLogger.setup_logging(
-    name="tg_bot_backend",
+    name="eshow_backend",
     log_dir="logs",
     log_level="DEBUG" if settings.debug else "INFO",
     max_days=15,

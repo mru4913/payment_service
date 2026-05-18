@@ -4,7 +4,8 @@
 import base64
 import hashlib
 import json
-from typing import Dict, Any, Optional
+from datetime import datetime
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 from cryptography.hazmat.primitives import hashes, serialization
@@ -156,8 +157,6 @@ class AlipayProvider(PaymentProvider):
             return False
 
     def _get_timestamp(self) -> str:
-        from datetime import datetime
-
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def _generate_sign(self, params: Dict[str, Any]) -> str:

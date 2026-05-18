@@ -7,6 +7,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ...domain.balance_transaction_types import BalanceTransactionType
 from ...services import BalanceService
 from ..dependencies import balance_service_read
 
@@ -21,10 +22,14 @@ async def get_recent_transactions(
     limit: int = 100,
     balance_service: BalanceService = Depends(balance_service_read),
 ):
-    """获取最近的交易记录"""
+    """获取最近的交易记录。
+
+    ``total`` 为时间窗内流水总条数；``returned`` 为本页条数（≤ ``limit``）。
+    """
     if days <= 0 or days > 365:
         raise HTTPException(status_code=400, detail="天数必须在1-365之间")
 
+    total = await balance_service.count_recent_transactions(days)
     transactions = await balance_service.get_recent_transactions(days, skip, limit)
 
     return {
@@ -38,12 +43,14 @@ async def get_recent_transactions(
                 "balance_after_usd": t.balance_after_usd,
                 "transaction_type": t.transaction_type,
                 "payment_id": str(t.payment_id) if t.payment_id else None,
+                "task_id": str(t.task_id) if t.task_id else None,
                 "description": t.description,
                 "created_at": t.created_at,
             }
             for t in transactions
         ],
-        "total": len(transactions),
+        "total": total,
+        "returned": len(transactions),
     }
 
 
@@ -54,14 +61,18 @@ async def get_transactions_by_type(
     limit: int = 100,
     balance_service: BalanceService = Depends(balance_service_read),
 ):
-    """根据交易类型获取记录"""
-    valid_types = ["deposit", "withdraw", "payment", "refund"]
+    """根据交易类型获取记录。
+
+    ``total`` 为该类型流水总条数；``returned`` 为本页条数（≤ ``limit``）。
+    """
+    valid_types = [m.value for m in BalanceTransactionType]
     if transaction_type not in valid_types:
         valid_options = ", ".join(valid_types)
         raise HTTPException(
             status_code=400, detail=f"无效的交易类型，可选值: {valid_options}"
         )
 
+    total = await balance_service.count_transactions_by_type(transaction_type)
     transactions = await balance_service.get_transactions_by_type(
         transaction_type, skip, limit
     )
@@ -75,12 +86,16 @@ async def get_transactions_by_type(
                 "amount_usd": t.amount_usd,
                 "balance_before_usd": t.balance_before_usd,
                 "balance_after_usd": t.balance_after_usd,
+                "transaction_type": t.transaction_type,
+                "payment_id": str(t.payment_id) if t.payment_id else None,
+                "task_id": str(t.task_id) if t.task_id else None,
                 "description": t.description,
                 "created_at": t.created_at,
             }
             for t in transactions
         ],
-        "total": len(transactions),
+        "total": total,
+        "returned": len(transactions),
     }
 
 
@@ -116,6 +131,7 @@ async def get_transaction_by_id(
         "balance_after_usd": transaction.balance_after_usd,
         "transaction_type": transaction.transaction_type,
         "payment_id": str(transaction.payment_id) if transaction.payment_id else None,
+        "task_id": str(transaction.task_id) if transaction.task_id else None,
         "description": transaction.description,
         "created_at": transaction.created_at,
     }

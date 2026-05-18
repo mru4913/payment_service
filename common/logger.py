@@ -12,7 +12,7 @@ class DailyRotatingLogger:
 
     def __init__(
         self,
-        name: str = "tg_bot",
+        name: str = "eshow",
         log_dir: str = "logs",
         log_level: int = logging.INFO,
         max_days: int = 15,
@@ -81,7 +81,7 @@ class DailyRotatingLogger:
     @classmethod
     def setup_logging(
         cls,
-        name: str = "tg_bot",
+        name: str = "eshow",
         log_dir: str = "logs",
         log_level: str = "INFO",
         max_days: int = 15,
@@ -127,7 +127,7 @@ _logger_instances: dict[str, DailyRotatingLogger] = {}
 
 
 def get_logger(
-    name: str = "tg_bot",
+    name: str = "eshow",
     log_dir: str = "logs",
     log_level: int = logging.INFO,
     max_days: int = 15,
