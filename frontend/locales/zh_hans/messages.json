@@ -1,6 +1,6 @@
 {
   "welcome": {
-    "greeting": "👋 欢迎使用支付机器人！",
+    "greeting": "👋 欢迎使用 Eshow（易修）！",
     "registered": "您的账户已创建成功。",
     "returning": "欢迎回来，{name}！"
   },
@@ -19,9 +19,37 @@
   },
   "balance": {
     "title": "💰 账户信息",
-    "current": "当前余额：<b>{balance}</b> USD",
+    "total": "总余额：<b>{balance}</b> USD",
+    "held": "预授权冻结：{held} USD",
+    "available": "可用余额：{available} USD",
     "total_deposit": "累计充值：{deposits} USD",
-    "total_withdraw": "累计消费：{withdrawals} USD"
+    "total_withdraw": "累计消费：{withdrawals} USD",
+    "user_not_found": "未找到账户，请先使用 /start 注册。"
+  },
+  "errors": {
+    "backend_transport": "无法连接后端服务，请稍后重试或检查网络。",
+    "backend_auth": "后端鉴权失败，请检查服务端 API_KEY 配置。",
+    "backend_config": "算力功能未配置：请设置 BACKEND_BASE_URL 与 API_KEY。"
+  },
+  "task": {
+    "usage": "用法：/task &lt;任务ID&gt;\n示例：<code>/task 550e8400-e29b-41d4-a716-446655440000</code>",
+    "invalid_uuid": "任务 ID 不是有效的 UUID。",
+    "title": "📌 任务状态",
+    "status": "状态：<b>{status}</b>",
+    "queued_at": "入队时间：{t}",
+    "started_at": "开始时间：{t}",
+    "completed_at": "完成时间：{t}",
+    "upstream": "上游任务 ID：<code>{id}</code>",
+    "error": "错误：{msg}",
+    "not_found": "任务不存在或无权查看。"
+  },
+  "compute": {
+    "intro": "算力任务（换脸 face_swap）：请依次发送两张图片的 <b>HTTPS 直链</b>。\n预授权：{hold} USD，档位：{priority}。\n发送 /cancel 取消。",
+    "ask_source": "请发送 <b>源图</b> 图片 URL：",
+    "ask_target": "请发送 <b>目标图</b> 图片 URL：",
+    "invalid_url": "请输入以 http:// 或 https:// 开头的 URL。",
+    "success": "任务已创建。\n任务 ID：<code>{task_id}</code>\n状态：{status}\n（可使用 /task 查询进度）",
+    "cancelled": "已取消创建任务。"
   },
   "history": {
     "title": "📋 交易记录",
@@ -33,6 +61,9 @@
     "type_withdraw": "消费",
     "type_refund": "退款",
     "type_payment": "支付",
+    "type_hold": "预授权冻结",
+    "type_hold_release": "解冻",
+    "type_consumption": "算力消费",
     "prev": "⬅️ 上一页",
     "next": "下一页 ➡️"
   },
@@ -43,7 +74,7 @@
   "common": {
     "error": "❌ 操作失败，请稍后重试。",
     "help_title": "📖 可用命令",
-    "help_text": "/start - 开始使用\n/recharge - 充值 USDT\n/balance - 查询余额\n/history - 交易记录\n/lang - 切换语言\n/help - 帮助信息",
+    "help_text": "/start - 开始使用\n/recharge - 充值 USDT\n/balance - 查询余额\n/history - 交易记录\n/compute - 创建算力任务（换脸）\n/task - 查询任务状态\n/lang - 切换语言\n/help - 帮助信息",
     "unknown": "未知命令，请输入 /help 查看帮助。",
     "btn_check_status": "🔍 查询状态",
     "btn_cancel": "❌ 取消订单"

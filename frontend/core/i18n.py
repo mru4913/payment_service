@@ -16,6 +16,24 @@ from typing import Optional
 SUPPORTED_LANGS = ("zh_hans", "zh_hant", "en")
 DEFAULT_LANG = "zh_hans"
 
+
+def get_user_lang_from_telegram(user) -> str:
+    """根据 Telegram User.language_code 映射到 SUPPORTED_LANGS。"""
+    if not user:
+        return DEFAULT_LANG
+    code = getattr(user, "language_code", None)
+    if not code or not isinstance(code, str):
+        return DEFAULT_LANG
+    low = code.lower().replace("-", "_")
+    if low.startswith("zh_tw") or low.startswith("zh_hk"):
+        return "zh_hant"
+    if low.startswith("zh"):
+        return "zh_hans"
+    if low.startswith("en"):
+        return "en"
+    return DEFAULT_LANG
+
+
 _LOCALES_DIR = Path(__file__).resolve().parent.parent / "locales"
 _cache: dict[str, dict] = {}
 

@@ -8,13 +8,16 @@
 import math
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Union
 
 from telegram import Update
 
-from .i18n import get_user_lang, t as _t
-from backend.database.session import async_session_maker
-from backend.services.user_service import UserService
+from .i18n import (
+    get_user_lang,
+    get_user_lang_from_telegram,
+    t as _t,
+)
+from frontend.integrations import BackendAPIError, get_backend_client
 
 
 def format_amount(amount: Decimal, decimals: int = 6) -> str:
@@ -25,10 +28,17 @@ def format_amount(amount: Decimal, decimals: int = 6) -> str:
     return formatted
 
 
-def format_datetime(dt: Optional[datetime]) -> str:
-    """格式化时间为可读字符串。"""
+def format_datetime(dt: Optional[Union[datetime, str]]) -> str:
+    """格式化时间为可读字符串（支持 API JSON 的 ISO 字符串）。"""
     if dt is None:
         return "-"
+    if isinstance(dt, str):
+        try:
+            normalized = dt.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return dt[:16] if len(dt) >= 16 else dt
+        return parsed.strftime("%Y-%m-%d %H:%M")
     return dt.strftime("%Y-%m-%d %H:%M")
 
 
@@ -45,14 +55,18 @@ def paginate(total: int, page: int, per_page: int = 5) -> tuple[int, int, int]:
 
 
 async def get_user_lang_from_update(update: Update) -> str:
-    """从 Update 中获取用户的语言偏好。"""
+    """从后端用户 preferences 读取语言；不可用时回退 Telegram language_code。"""
     telegram_id = update.effective_user.id
-    async with async_session_maker() as session:
-        svc = UserService(session)
-        user = await svc.get_user(telegram_id)
-        if user:
-            return get_user_lang(user.preferences)
-    return "zh_hans"
+    client = get_backend_client()
+    try:
+        user = await client.get_user(telegram_id)
+        return get_user_lang(user.get("preferences"))
+    except BackendAPIError as e:
+        if e.http_status == 404:
+            return get_user_lang_from_telegram(update.effective_user)
+        if e.is_transport or e.http_status in (401, 403):
+            return get_user_lang_from_telegram(update.effective_user)
+        raise
 
 
 def tr(key: str, lang: str, **kwargs) -> str:

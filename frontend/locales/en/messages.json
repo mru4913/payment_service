@@ -1,6 +1,6 @@
 {
   "welcome": {
-    "greeting": "👋 Welcome to Payment Bot!",
+    "greeting": "👋 Welcome to Eshow (易修)!",
     "registered": "Your account has been created.",
     "returning": "Welcome back, {name}!"
   },
@@ -19,9 +19,37 @@
   },
   "balance": {
     "title": "💰 Account Info",
-    "current": "Balance: <b>{balance}</b> USD",
+    "total": "Total balance: <b>{balance}</b> USD",
+    "held": "On hold (pre-auth): {held} USD",
+    "available": "Available: {available} USD",
     "total_deposit": "Total deposits: {deposits} USD",
-    "total_withdraw": "Total spent: {withdrawals} USD"
+    "total_withdraw": "Total spent: {withdrawals} USD",
+    "user_not_found": "No account found. Please use /start first."
+  },
+  "errors": {
+    "backend_transport": "Cannot reach backend. Please try again later.",
+    "backend_auth": "Backend auth failed. Check API_KEY configuration.",
+    "backend_config": "Compute is not configured: set BACKEND_BASE_URL and API_KEY."
+  },
+  "task": {
+    "usage": "Usage: /task followed by task UUID.\nExample: /task 550e8400-e29b-41d4-a716-446655440000",
+    "invalid_uuid": "Task ID is not a valid UUID.",
+    "title": "📌 Task status",
+    "status": "Status: <b>{status}</b>",
+    "queued_at": "Queued at: {t}",
+    "started_at": "Started at: {t}",
+    "completed_at": "Completed at: {t}",
+    "upstream": "Upstream ID: <code>{id}</code>",
+    "error": "Error: {msg}",
+    "not_found": "Task not found or access denied."
+  },
+  "compute": {
+    "intro": "Compute (face_swap): send two image <b>HTTPS direct URLs</b> in order.\nPre-auth hold: {hold} USD, tier: {priority}.\nSend /cancel to abort.",
+    "ask_source": "Send <b>source</b> image URL:",
+    "ask_target": "Send <b>target</b> image URL:",
+    "invalid_url": "URL must start with http:// or https://",
+    "success": "Task created.\nTask ID: <code>{task_id}</code>\nStatus: {status}\n(Use /task to check progress)",
+    "cancelled": "Task creation cancelled."
   },
   "history": {
     "title": "📋 Transaction History",
@@ -33,6 +61,9 @@
     "type_withdraw": "Withdrawal",
     "type_refund": "Refund",
     "type_payment": "Payment",
+    "type_hold": "Pre-auth hold",
+    "type_hold_release": "Hold released",
+    "type_consumption": "Compute usage",
     "prev": "⬅️ Previous",
     "next": "Next ➡️"
   },
@@ -43,7 +74,7 @@
   "common": {
     "error": "❌ Operation failed. Please try again later.",
     "help_title": "📖 Available Commands",
-    "help_text": "/start - Get started\n/recharge - Top up USDT\n/balance - Check balance\n/history - Transaction history\n/lang - Change language\n/help - Help",
+    "help_text": "/start - Get started\n/recharge - Top up USDT\n/balance - Check balance\n/history - Transaction history\n/compute - Create compute task (face swap)\n/task - Task status\n/lang - Change language\n/help - Help",
     "unknown": "Unknown command. Type /help for help.",
     "btn_check_status": "🔍 Check status",
     "btn_cancel": "❌ Cancel order"

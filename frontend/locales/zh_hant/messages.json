@@ -1,6 +1,6 @@
 {
   "welcome": {
-    "greeting": "👋 歡迎使用支付機器人！",
+    "greeting": "👋 歡迎使用 Eshow（易修）！",
     "registered": "您的帳戶已建立成功。",
     "returning": "歡迎回來，{name}！"
   },
@@ -19,9 +19,37 @@
   },
   "balance": {
     "title": "💰 帳戶資訊",
-    "current": "目前餘額：<b>{balance}</b> USD",
+    "total": "總餘額：<b>{balance}</b> USD",
+    "held": "預授權凍結：{held} USD",
+    "available": "可用餘額：{available} USD",
     "total_deposit": "累計充值：{deposits} USD",
-    "total_withdraw": "累計消費：{withdrawals} USD"
+    "total_withdraw": "累計消費：{withdrawals} USD",
+    "user_not_found": "找不到帳戶，請先使用 /start 註冊。"
+  },
+  "errors": {
+    "backend_transport": "無法連線後端服務，請稍後再試或檢查網路。",
+    "backend_auth": "後端鑑權失敗，請檢查服務端 API_KEY 設定。",
+    "backend_config": "算力功能未設定：請設定 BACKEND_BASE_URL 與 API_KEY。"
+  },
+  "task": {
+    "usage": "用法：/task 後接任務 ID（UUID）。\n範例：/task 550e8400-e29b-41d4-a716-446655440000",
+    "invalid_uuid": "任務 ID 不是有效的 UUID。",
+    "title": "📌 任務狀態",
+    "status": "狀態：<b>{status}</b>",
+    "queued_at": "入隊時間：{t}",
+    "started_at": "開始時間：{t}",
+    "completed_at": "完成時間：{t}",
+    "upstream": "上游任務 ID：<code>{id}</code>",
+    "error": "錯誤：{msg}",
+    "not_found": "任務不存在或無權檢視。"
+  },
+  "compute": {
+    "intro": "算力任務（換臉 face_swap）：請依序傳送兩張圖片的 <b>HTTPS 直鏈</b>。\n預授權：{hold} USD，檔位：{priority}。\n傳送 /cancel 取消。",
+    "ask_source": "請傳送 <b>源圖</b> 圖片 URL：",
+    "ask_target": "請傳送 <b>目標圖</b> 圖片 URL：",
+    "invalid_url": "請輸入以 http:// 或 https:// 開頭的 URL。",
+    "success": "任務已建立。\n任務 ID：<code>{task_id}</code>\n狀態：{status}\n（可使用 /task 查詢進度）",
+    "cancelled": "已取消建立任務。"
   },
   "history": {
     "title": "📋 交易記錄",
@@ -33,6 +61,9 @@
     "type_withdraw": "消費",
     "type_refund": "退款",
     "type_payment": "支付",
+    "type_hold": "預授權凍結",
+    "type_hold_release": "解凍",
+    "type_consumption": "算力消費",
     "prev": "⬅️ 上一頁",
     "next": "下一頁 ➡️"
   },
@@ -43,7 +74,7 @@
   "common": {
     "error": "❌ 操作失敗，請稍後重試。",
     "help_title": "📖 可用指令",
-    "help_text": "/start - 開始使用\n/recharge - 充值 USDT\n/balance - 查詢餘額\n/history - 交易記錄\n/lang - 切換語言\n/help - 幫助資訊",
+    "help_text": "/start - 開始使用\n/recharge - 充值 USDT\n/balance - 查詢餘額\n/history - 交易記錄\n/compute - 建立算力任務（換臉）\n/task - 查詢任務狀態\n/lang - 切換語言\n/help - 幫助資訊",
     "unknown": "未知指令，請輸入 /help 查看幫助。",
     "btn_check_status": "🔍 查詢狀態",
     "btn_cancel": "❌ 取消訂單"

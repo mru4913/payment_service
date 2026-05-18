@@ -5,15 +5,17 @@
 全局错误处理
 """
 
+import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from backend.globals import logger
+logger = logging.getLogger("frontend.error_handler")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Bot 全局异常处理器"""
-    logger.error(f"Bot 异常: {context.error}", exc_info=context.error)
+    logger.error("Bot 异常: %s", context.error, exc_info=context.error)
 
     if isinstance(update, Update) and update.effective_message:
         try:

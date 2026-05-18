@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-支付机器人主程序
+Eshow（易修）Telegram 机器人主程序（支付 + 算力等）。
 
 注册所有 handler，创建 Application 实例。
 """
@@ -21,10 +21,11 @@ from .handlers.recharge import (
 from .handlers.balance import balance_handler
 from .handlers.history import history_handler, history_page_callback
 from .handlers.language import lang_handler, lang_callback
+from .handlers.compute import get_compute_conversation_handler, task_command
 
 
-def build_payment_bot():
-    """构建支付机器人 Application，注册所有 handler。"""
+def build_telegram_app():
+    """构建 Telegram Application，注册所有 handler。"""
     app = create_bot_application()
 
     # 命令
@@ -32,7 +33,10 @@ def build_payment_bot():
     app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("balance", balance_handler))
     app.add_handler(CommandHandler("history", history_handler))
+    app.add_handler(CommandHandler("task", task_command))
     app.add_handler(CommandHandler("lang", lang_handler))
+
+    app.add_handler(get_compute_conversation_handler())
 
     # 充值 ConversationHandler（内含金额选择回调；自定义金额依赖对话状态）
     app.add_handler(get_recharge_conversation_handler())

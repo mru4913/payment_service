@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-/recharge 充值流程
+/recharge 充值流程（经 FastAPI HTTP，不直连数据库）。
 
 流程：
   /recharge → 选金额键盘 → 创建订单 → 展示收款地址
@@ -13,25 +13,21 @@ from decimal import Decimal, InvalidOperation
 
 from telegram import Update
 from telegram.ext import (
+    CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     ConversationHandler,
-    CommandHandler,
-    CallbackQueryHandler,
     MessageHandler,
     filters,
 )
 
-from backend.database.session import async_session_maker
-from backend.services.payment_service import PaymentService
-from backend.payments.trc20_usdt import TRC20UsdtProvider
-from backend.payments.base import PaymentRequest
-from frontend.core.utils import get_user_lang_from_update, tr, format_amount
-from frontend.payment_bot.keyboards import (
+from frontend.bot.keyboards import (
     recharge_amount_keyboard,
     recharge_order_keyboard,
 )
+from frontend.core.utils import format_amount, get_user_lang_from_update, tr
+from frontend.integrations import BackendAPIError, get_backend_client
 
-# ConversationHandler 状态：先选金额，可选「自定义」再等待文本输入
 SELECTING_AMOUNT = 0
 WAITING_CUSTOM_AMOUNT = 1
 
@@ -39,26 +35,37 @@ MIN_AMOUNT = Decimal("1")
 MAX_AMOUNT = Decimal("10000")
 
 
+def _backend_error_reply(lang: str, exc: BackendAPIError) -> str:
+    if exc.is_transport:
+        return tr("errors.backend_transport", lang)
+    if exc.http_status in (401, 403):
+        return tr("errors.backend_auth", lang)
+    return tr("common.error", lang)
+
+
 async def recharge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理 /recharge 命令"""
     lang = await get_user_lang_from_update(update)
     telegram_id = update.effective_user.id
+    client = get_backend_client()
 
-    # 检查是否有未完成的 trc20_usdt 订单
-    async with async_session_maker() as session:
-        svc = PaymentService(session)
-        pending = await svc.get_pending_payments(limit=200)
-        user_pending = [
-            p
-            for p in pending
-            if p.telegram_id == telegram_id and p.payment_method == "trc20_usdt"
-        ]
-        if user_pending:
-            p = user_pending[0]
-            await update.message.reply_text(
-                tr("recharge.pending_exists", lang, amount=format_amount(p.amount_usd))
-            )
-            return ConversationHandler.END
+    try:
+        pending_data = await client.list_pending_payments(
+            telegram_id=telegram_id, limit=200
+        )
+    except BackendAPIError as e:
+        await update.message.reply_text(_backend_error_reply(lang, e))
+        return ConversationHandler.END
+
+    payments = pending_data.get("payments") or []
+    user_pending = [p for p in payments if p.get("payment_method") == "trc20_usdt"]
+    if user_pending:
+        p = user_pending[0]
+        amt = Decimal(str(p.get("amount_usd", "0")))
+        await update.message.reply_text(
+            tr("recharge.pending_exists", lang, amount=format_amount(amt))
+        )
+        return ConversationHandler.END
 
     keyboard = recharge_amount_keyboard(lang)
     await update.message.reply_text(
@@ -79,7 +86,6 @@ async def amount_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(tr("recharge.enter_amount", lang))
         return WAITING_CUSTOM_AMOUNT
 
-    # recharge:amount:<n>
     try:
         amount = Decimal(data.split(":")[-1])
     except (InvalidOperation, IndexError):
@@ -115,36 +121,41 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_id = query.data.split(":")[-1]
     lang = await get_user_lang_from_update(update)
     telegram_id = update.effective_user.id
+    client = get_backend_client()
 
-    async with async_session_maker() as session:
-        svc = PaymentService(session)
-        payment = await svc.get_payment(payment_id)
+    try:
+        payment = await client.get_payment(payment_id)
+    except BackendAPIError as e:
+        await query.answer()
+        await query.edit_message_text(_backend_error_reply(lang, e))
+        return
 
-    if not payment or payment.telegram_id != telegram_id:
+    if int(payment.get("telegram_id", -1)) != telegram_id:
         await query.answer()
         await query.edit_message_text(tr("common.error", lang))
         return
 
-    if payment.status == "completed":
+    status = payment.get("status")
+    if status == "completed":
         await query.answer()
-        async with async_session_maker() as session:
-            from backend.services.user_service import UserService
-
-            user_svc = UserService(session)
-            user_balance = await user_svc.get_user_balance(payment.telegram_id)
+        try:
+            bal = await client.get_user_balance(telegram_id)
+            bal_dec = Decimal(str(bal.get("balance", "0")))
+        except BackendAPIError:
+            bal_dec = Decimal("0")
+        amt = Decimal(str(payment.get("amount_usd", "0")))
         await query.edit_message_text(
             tr(
                 "recharge.success",
                 lang,
-                amount=format_amount(payment.amount_usd),
-                balance=format_amount(user_balance or Decimal("0")),
+                amount=format_amount(amt),
+                balance=format_amount(bal_dec),
             )
         )
-    elif payment.status == "cancelled":
+    elif status == "cancelled":
         await query.answer()
         await query.edit_message_text(tr("recharge.cancelled", lang))
     else:
-        # 每个 callback 只能 answer 一次；pending 用弹窗提示，不重复 answer
         await query.answer("⏳ 等待到账中…", show_alert=True)
 
 
@@ -155,17 +166,17 @@ async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_id = query.data.split(":")[-1]
     lang = await get_user_lang_from_update(update)
     telegram_id = update.effective_user.id
+    client = get_backend_client()
 
-    async with async_session_maker() as session:
-        svc = PaymentService(session)
-        payment = await svc.get_payment(payment_id)
-        if not payment or payment.telegram_id != telegram_id:
+    try:
+        pay = await client.get_payment(payment_id)
+        if int(pay.get("telegram_id", -1)) != telegram_id:
             await query.edit_message_text(tr("common.error", lang))
             return
-        cancelled = await svc.cancel_payment(payment_id)
-        if not cancelled:
-            await query.edit_message_text(tr("common.error", lang))
-            return
+        await client.cancel_payment(payment_id)
+    except BackendAPIError:
+        await query.edit_message_text(tr("common.error", lang))
+        return
 
     await query.edit_message_text(tr("recharge.cancel_confirm", lang))
 
@@ -173,42 +184,38 @@ async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _create_recharge_order(
     message_or_query, telegram_id: int, amount: Decimal, lang: str
 ):
-    """创建 TRC20 USDT 充值订单的核心逻辑"""
-    provider = TRC20UsdtProvider()
-
-    async with async_session_maker() as session:
-        request = PaymentRequest(
-            payment_id="temp",
-            amount_usd=amount,
+    """创建 TRC20 USDT 充值订单（服务端唯一金额 + metadata）。"""
+    client = get_backend_client()
+    try:
+        created = await client.create_trc20_recharge_payment(
+            telegram_id,
+            amount,
             description="TRC20 USDT Recharge",
-            callback_url="",
         )
-        result = await provider.create_unique_payment(request, session)
+    except BackendAPIError as e:
+        err = _backend_error_reply(lang, e)
+        if e.http_status == 400 and e.message and not e.is_transport:
+            err = tr("common.error", lang) + f"\n{e.message}"
+        if hasattr(message_or_query, "edit_message_text"):
+            await message_or_query.edit_message_text(err)
+        else:
+            await message_or_query.reply_text(err)
+        return
 
-        if not result.success:
-            error_text = tr("common.error", lang) + f"\n{result.error_message}"
-            if hasattr(message_or_query, "edit_message_text"):
-                await message_or_query.edit_message_text(error_text)
-            else:
-                await message_or_query.reply_text(error_text)
-            return
+    meta = created.get("metadata") or {}
+    raw_amt = meta.get("amount_usdt")
+    wallet_address = meta.get("wallet_address")
+    if raw_amt is None or not wallet_address:
+        err = tr("common.error", lang)
+        if hasattr(message_or_query, "edit_message_text"):
+            await message_or_query.edit_message_text(err)
+        else:
+            await message_or_query.reply_text(err)
+        return
 
-        unique_amount = Decimal(result.metadata["amount_usdt"])
-        wallet_address = result.metadata["wallet_address"]
-
-        svc = PaymentService(session)
-        payment = await svc.create_payment(
-            telegram_id=telegram_id,
-            amount_usd=unique_amount,
-            payment_method="trc20_usdt",
-            description="TRC20 USDT Recharge",
-            payment_metadata=result.metadata,
-        )
-        await session.commit()
-
-    from backend.globals import settings
-
-    timeout = settings.trc20_order_timeout_minutes
+    unique_amount = Decimal(str(raw_amt))
+    timeout = int(created.get("order_timeout_minutes") or 15)
+    payment_id = str(created.get("payment_id", ""))
 
     text = (
         tr("recharge.order_created", lang)
@@ -223,7 +230,7 @@ async def _create_recharge_order(
         + tr("recharge.timeout_warning", lang, minutes=timeout)
     )
 
-    keyboard = recharge_order_keyboard(str(payment.payment_id), lang)
+    keyboard = recharge_order_keyboard(payment_id, lang)
 
     reply = getattr(message_or_query, "edit_message_text", None)
     if reply:
