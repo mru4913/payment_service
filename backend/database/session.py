@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 from ..globals import settings
+from .models import Base
 
 
 # 创建异步引擎
@@ -44,29 +45,19 @@ async def get_db_read() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_db_write() -> AsyncGenerator[AsyncSession, None]:
-    """写入操作会话 - 手动控制事务"""
+    """写入会话：单请求单事务；成功退出 `begin` 时提交，异常时回滚。"""
     async with async_session_maker() as session:
-        try:
+        async with session.begin():
             yield session
-            # 不自动提交，由Service层控制事务
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
 
 
 async def create_tables():
     """创建所有数据库表"""
-    from .models import Base
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 async def drop_tables():
     """删除所有数据库表"""
-    from .models import Base
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

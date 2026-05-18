@@ -7,8 +7,8 @@
 
 import uuid
 from datetime import datetime
-from typing import Optional, List, Tuple
-from sqlalchemy import select, desc, and_, or_
+from typing import List, Optional, Tuple
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Payment
@@ -47,19 +47,39 @@ class PaymentRepository(BaseRepository[Payment]):
         result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_pending_payments(
-        self, skip: int = 0, limit: int = 100
-    ) -> List[Payment]:
-        """获取待处理的支付记录"""
+    async def count_user_payments(self, telegram_id: int) -> int:
+        """该用户支付记录总条数（与 ``get_user_payments`` 筛选一致）。"""
         stmt = (
-            select(Payment)
-            .where(Payment.status == "pending")
-            .order_by(Payment.created_at)
-            .offset(skip)
-            .limit(limit)
+            select(func.count())
+            .select_from(Payment)
+            .where(Payment.telegram_id == telegram_id)
         )
         result = await self.db_session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def get_pending_payments(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        telegram_id: Optional[int] = None,
+    ) -> List[Payment]:
+        """获取待处理的支付记录；可选按 telegram_id 过滤。"""
+        stmt = select(Payment).where(Payment.status == "pending")
+        if telegram_id is not None:
+            stmt = stmt.where(Payment.telegram_id == telegram_id)
+        stmt = stmt.order_by(Payment.created_at).offset(skip).limit(limit)
+        result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_pending_payments(self, telegram_id: Optional[int] = None) -> int:
+        """pending 总条数；可选 ``telegram_id`` 与列表接口一致。"""
+        stmt = (
+            select(func.count()).select_from(Payment).where(Payment.status == "pending")
+        )
+        if telegram_id is not None:
+            stmt = stmt.where(Payment.telegram_id == telegram_id)
+        result = await self.db_session.execute(stmt)
+        return int(result.scalar_one() or 0)
 
     async def get_pending_trc20_usdt_keyset(
         self,
@@ -102,3 +122,9 @@ class PaymentRepository(BaseRepository[Payment]):
         )
         result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_payments_by_status(self, status: str) -> int:
+        """指定 ``status`` 的支付总条数。"""
+        stmt = select(func.count()).select_from(Payment).where(Payment.status == status)
+        result = await self.db_session.execute(stmt)
+        return int(result.scalar_one() or 0)

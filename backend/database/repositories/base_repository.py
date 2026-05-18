@@ -58,16 +58,3 @@ class BaseRepository(ABC, Generic[ModelType]):
         stmt = delete(self.model).where(self.model.id == id)
         result = await self.db_session.execute(stmt)
         return result.rowcount > 0
-
-    # 显式事务控制方法（可选使用）
-    async def commit(self):
-        """显式提交当前会话"""
-        await self.db_session.commit()
-
-    async def rollback(self):
-        """回滚当前会话"""
-        await self.db_session.rollback()
-
-    async def begin_transaction(self):
-        """开始显式事务"""
-        return await self.db_session.begin()

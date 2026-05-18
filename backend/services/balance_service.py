@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base_service import BaseService
+from ..domain.balance_transaction_types import BalanceTransactionType
 from ..database.repositories import BalanceTransactionRepository
 from ..database.models import BalanceTransaction
 
@@ -28,6 +29,10 @@ class BalanceService(BaseService):
         """获取用户余额交易记录"""
         return await self.balance_repo.get_user_transactions(telegram_id, skip, limit)
 
+    async def count_user_transactions(self, telegram_id: int) -> int:
+        """用户余额流水总条数。"""
+        return await self.balance_repo.count_user_transactions(telegram_id)
+
     async def get_transactions_by_type(
         self, transaction_type: str, skip: int = 0, limit: int = 100
     ) -> List[BalanceTransaction]:
@@ -36,11 +41,17 @@ class BalanceService(BaseService):
             transaction_type, skip, limit
         )
 
+    async def count_transactions_by_type(self, transaction_type: str) -> int:
+        return await self.balance_repo.count_transactions_by_type(transaction_type)
+
     async def get_recent_transactions(
         self, days: int = 7, skip: int = 0, limit: int = 100
     ) -> List[BalanceTransaction]:
         """获取最近的交易记录"""
         return await self.balance_repo.get_recent_transactions(days, skip, limit)
+
+    async def count_recent_transactions(self, days: int = 7) -> int:
+        return await self.balance_repo.count_recent_transactions(days)
 
     async def get_transaction_by_id(
         self, transaction_id: str
@@ -66,20 +77,42 @@ class BalanceService(BaseService):
             "deposit_count": 0,
             "withdrawal_count": 0,
             "refund_count": 0,
+            "payment_count": 0,
+            "hold_count": 0,
+            "hold_release_count": 0,
+            "consumption_count": 0,
             "total_deposit_amount": Decimal("0"),
             "total_withdrawal_amount": Decimal("0"),
             "total_refund_amount": Decimal("0"),
+            "total_payment_amount": Decimal("0"),
+            "total_hold_amount": Decimal("0"),
+            "total_hold_release_amount": Decimal("0"),
+            "total_consumption_amount": Decimal("0"),
         }
 
         for transaction in user_transactions:
-            if transaction.transaction_type == "deposit":
+            t = transaction.transaction_type
+            amt = transaction.amount_usd
+            if t == BalanceTransactionType.DEPOSIT:
                 summary["deposit_count"] += 1
-                summary["total_deposit_amount"] += transaction.amount_usd
-            elif transaction.transaction_type == "withdraw":
+                summary["total_deposit_amount"] += amt
+            elif t == BalanceTransactionType.WITHDRAW:
                 summary["withdrawal_count"] += 1
-                summary["total_withdrawal_amount"] += abs(transaction.amount_usd)
-            elif transaction.transaction_type == "refund":
+                summary["total_withdrawal_amount"] += abs(amt)
+            elif t == BalanceTransactionType.REFUND:
                 summary["refund_count"] += 1
-                summary["total_refund_amount"] += abs(transaction.amount_usd)
+                summary["total_refund_amount"] += abs(amt)
+            elif t == BalanceTransactionType.PAYMENT:
+                summary["payment_count"] += 1
+                summary["total_payment_amount"] += abs(amt)
+            elif t == BalanceTransactionType.HOLD:
+                summary["hold_count"] += 1
+                summary["total_hold_amount"] += abs(amt)
+            elif t == BalanceTransactionType.HOLD_RELEASE:
+                summary["hold_release_count"] += 1
+                summary["total_hold_release_amount"] += abs(amt)
+            elif t == BalanceTransactionType.CONSUMPTION:
+                summary["consumption_count"] += 1
+                summary["total_consumption_amount"] += abs(amt)
 
         return summary

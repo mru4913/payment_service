@@ -17,6 +17,8 @@ from .base import Base
 if TYPE_CHECKING:
     from .payment import Payment
     from .balance_transaction import BalanceTransaction
+    from .task import Task
+    from .task_balance_hold import TaskBalanceHold
 
 
 class User(Base):
@@ -69,7 +71,16 @@ class User(Base):
         Numeric(15, 6),
         nullable=False,
         default=Decimal("0.000000"),
-        comment="用户余额(美元)",
+        comment="用户总余额(美元)；预授权冻结不减少本字段",
+    )
+    balance_held: Mapped[Decimal] = mapped_column(
+        Numeric(15, 6),
+        nullable=False,
+        default=Decimal("0.000000"),
+        comment=(
+            "预授权冻结合计（与 balance 同币种）；冗余字段，"
+            "应等于各 active hold 金额之和"
+        ),
     )
     total_deposits: Mapped[Decimal] = mapped_column(
         Numeric(15, 6),
@@ -89,6 +100,11 @@ class User(Base):
     balance_transactions: Mapped[List["BalanceTransaction"]] = relationship(
         back_populates="user"
     )
+    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="user")
+    task_balance_holds: Mapped[List["TaskBalanceHold"]] = relationship(
+        "TaskBalanceHold",
+        back_populates="user",
+    )
 
     # 可选字段
     telegram_username: Mapped[str | None] = mapped_column(
@@ -106,6 +122,11 @@ class User(Base):
     preferences: Mapped[Dict | None] = mapped_column(
         JSONB, nullable=True, comment="用户偏好设置（JSON对象）"
     )
+
+    @property
+    def balance_available(self) -> Decimal:
+        """可用余额（不持久化）= 总余额 - 冻结。"""
+        return self.balance - self.balance_held
 
     @property
     def full_name(self) -> str:

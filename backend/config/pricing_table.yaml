@@ -1,0 +1,25 @@
+version: 1
+pricing_version: "2026-05-mvp"
+
+prices:
+  face_swap:
+    lite:
+      enabled: true
+      price_per_second_usd: "0.001000"
+    default:
+      enabled: true
+      price_per_second_usd: "0.002000"
+    plus:
+      enabled: true
+      price_per_second_usd: "0.004000"
+
+  universal_edit:
+    lite:
+      enabled: true
+      price_per_second_usd: "0.001500"
+    default:
+      enabled: true
+      price_per_second_usd: "0.003000"
+    plus:
+      enabled: true
+      price_per_second_usd: "0.006000"

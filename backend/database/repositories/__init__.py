@@ -6,10 +6,14 @@ from .base_repository import BaseRepository
 from .user_repository import UserRepository
 from .payment_repository import PaymentRepository
 from .balance_transaction_repository import BalanceTransactionRepository
+from .task_repository import TaskRepository
+from .task_balance_hold_repository import TaskBalanceHoldRepository
 
 __all__ = [
     "BaseRepository",
     "UserRepository",
     "PaymentRepository",
     "BalanceTransactionRepository",
+    "TaskRepository",
+    "TaskBalanceHoldRepository",
 ]

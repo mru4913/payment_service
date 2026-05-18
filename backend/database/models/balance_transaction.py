@@ -27,6 +27,7 @@ from .base import Base
 if TYPE_CHECKING:
     from .user import User
     from .payment import Payment
+    from .task import Task
 
 
 class BalanceTransaction(Base):
@@ -36,6 +37,7 @@ class BalanceTransaction(Base):
     __table_args__ = (
         Index("idx_bt_telegram_id", "telegram_id"),
         Index("idx_bt_payment_id", "payment_id"),
+        Index("idx_bt_task_id", "task_id"),
         Index("idx_bt_transaction_type", "transaction_type"),
     )
 
@@ -55,15 +57,24 @@ class BalanceTransaction(Base):
         Numeric(15, 6), nullable=False, comment="变动后余额(美元)"
     )
     transaction_type: Mapped[str] = mapped_column(
-        String(20),
+        String(32),
         nullable=False,
-        comment="交易类型 (deposit, withdraw, payment, refund)",
+        comment=(
+            "交易类型: deposit, withdraw, payment, refund, "
+            "consumption, hold, hold_release 等"
+        ),
     )
     payment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("payments.payment_id"),
         nullable=True,
         comment="关联支付ID",
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tasks.task_id", ondelete="SET NULL"),
+        nullable=True,
+        comment="关联算力任务 ID（消费/冻结等）",
     )
     description: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="交易描述"
@@ -75,3 +86,7 @@ class BalanceTransaction(Base):
     # 关联关系
     user: Mapped["User"] = relationship(back_populates="balance_transactions")
     payment: Mapped["Payment"] = relationship()
+    task: Mapped["Task | None"] = relationship(
+        "Task",
+        back_populates="balance_transactions",
+    )

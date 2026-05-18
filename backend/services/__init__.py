@@ -3,8 +3,17 @@
 
 # 业务逻辑服务层包
 from .base_service import BaseService
-from .user_service import UserService
-from .payment_service import PaymentService
 from .balance_service import BalanceService
+from .payment_service import PaymentService
+from .task_service import TaskService, TaskServiceError
+from .user_service import BalanceBelowHeldError, UserService
 
-__all__ = ["BaseService", "UserService", "PaymentService", "BalanceService"]
+__all__ = [
+    "BalanceBelowHeldError",
+    "BalanceService",
+    "BaseService",
+    "PaymentService",
+    "TaskService",
+    "TaskServiceError",
+    "UserService",
+]
