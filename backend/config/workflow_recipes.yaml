@@ -1,0 +1,44 @@
+# 任务类型 → 第三方工作流配方注册表
+# Worker 按 (third_party_platform, task_type) 查找配方，将 input_payload 中的
+# 用户级语义参数翻译为 RunningHub API 参数。
+#
+# 规则：
+#   workflow_id: 字符串 = 固定 workflow；null = 从 input_payload.workflow_id 取
+#   nodes:       dict   = 按配方翻译；null = 从 input_payload.node_info_list 透传
+#   nodes.<key>:
+#     node_id    — RH workflow 中的节点 ID
+#     field_name — RH 节点字段名
+#     upload     — true: input_payload 中该字段的值是文件 URL，需先 upload_media
+#                  false: 直接透传为 field_value
+
+version: 1
+
+recipes:
+  face_swap:
+    platform: runninghub
+    workflow_id: "2054464837232668674"
+    description: "AI 换脸"
+    nodes:
+      source_image:
+        node_id: "12"
+        field_name: "image"
+        upload: true
+      target_image:
+        node_id: "15"
+        field_name: "image"
+        upload: true
+
+  # 万能编辑
+  universal_edit:
+    platform: runninghub
+    workflow_id: "2054766030395854850"
+    description: "RunningHub 万能编辑"
+    nodes:
+      image:
+        node_id: "78"
+        field_name: "image"
+        upload: true
+      prompt:
+        node_id: "103"
+        field_name: "prompt"
+        upload: false

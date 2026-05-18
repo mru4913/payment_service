@@ -1,0 +1,33 @@
+# 算力档位展示、参考预授权、第三方平台及档位 → 上游实例类型映射。
+# 与 backend/domain/task_enums.py 中 PriorityType（lite/default/plus）、
+# ThirdPartyPlatform 对齐。细分按 task_type 的计价见 pricing_table.yaml（若存在）。
+
+version: 1
+
+# 档位：内部键 ↔ 中文名 ↔ 建议预授权（美元字符串，便于 Decimal）
+priority_tiers:
+  lite:
+    display_name_zh: "普通"
+    suggested_hold_usd: "0.300000"
+  default:
+    display_name_zh: "高等"
+    suggested_hold_usd: "0.500000"
+  plus:
+    display_name_zh: "尊享"
+    suggested_hold_usd: "1.200000"
+
+# 已接入或可扩展的第三方算力平台
+platforms:
+  runninghub:
+    display_name_zh: "RunningHub"
+    enabled: true
+
+# 各平台：本系统 priority_type → RunningHub `instanceType`（lite / standard / plus）
+# 内部 `default`（高等）对应 RH 的 standard 档。
+platform_priority_mapping:
+  runninghub:
+    instance_type:
+      # 空字符串：请求体不传 instanceType，走平台默认（最便宜档）
+      lite: ""
+      default: "standard"
+      plus: "plus"
