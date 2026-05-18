@@ -22,6 +22,16 @@ def _make_config(**overrides):
     return cfg
 
 
+def _mock_db_session_with_begin():
+    """与生产代码一致：`async with session` 且写路径上 `async with session.begin()`。"""
+    session = AsyncMock()
+    begin_cm = MagicMock()
+    begin_cm.__aenter__ = AsyncMock(return_value=None)
+    begin_cm.__aexit__ = AsyncMock(return_value=False)
+    session.begin = MagicMock(return_value=begin_cm)
+    return session
+
+
 class TestCheckPayments:
     @pytest.mark.asyncio
     async def test_skips_already_seen_tx(self):
@@ -131,7 +141,7 @@ class TestCancelExpiredOrders:
         mock_svc.get_pending_trc20_usdt_keyset = AsyncMock(return_value=[mock_payment])
         mock_svc.cancel_payment = AsyncMock()
 
-        mock_session = AsyncMock()
+        mock_session = _mock_db_session_with_begin()
 
         with patch("backend.payments.trc20_monitor.async_session_maker") as mock_sm:
             mock_sm.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -178,7 +188,7 @@ class TestCancelExpiredOrders:
         mock_svc = AsyncMock()
         mock_svc.get_pending_trc20_usdt_keyset = AsyncMock(return_value=[mock_payment])
         mock_svc.cancel_payment = AsyncMock()
-        mock_session = AsyncMock()
+        mock_session = _mock_db_session_with_begin()
 
         with patch("backend.payments.trc20_monitor.async_session_maker") as mock_sm:
             mock_sm.return_value.__aenter__ = AsyncMock(return_value=mock_session)
