@@ -1,6 +1,6 @@
-# TG支付机器人 (Telegram Payment Bot)
+# Eshow（易修）
 
-一个基于Telegram Bot API和FastAPI构建的现代化支付服务系统，为用户提供便捷、安全、多样化的支付体验。
+基于 Telegram Bot API 与 FastAPI 的支付与算力服务：美元基准、多支付方式，Bot 与 API 分离部署。
 
 ## ✨ 主要特性
 
@@ -27,9 +27,10 @@
 ## 📁 项目结构
 
 ```
-tg-payment-bot/
+eshow/   # 仓库克隆目录名以实际为准
 ├── frontend/          # 🤖 Telegram Bot - 多机器人架构
-│   ├── payment_bot/   # 支付机器人 (核心功能)
+│   ├── bot/             # Telegram 机器人（支付 + 算力对话等）
+│   ├── integrations/  # Bot 调 FastAPI 的 HTTP 客户端（无直连 DB）
 │   ├── admin_bot/     # 管理机器人 (可选)
 │   ├── core/          # 共享核心组件
 │   ├── locales/       # 🌍 多语言支持
@@ -48,6 +49,8 @@ tg-payment-bot/
 └── docs/              # 📚 项目文档
 ```
 
+Telegram Bot（`frontend/`）不直连数据库：业务经 `BACKEND_BASE_URL` 调用 FastAPI，持久化与支付逻辑在 `backend/` 完成。可选执行 `./scripts/check_frontend_zero_db.sh` 确认未误引入 `backend` 包。
+
 ## 🚀 快速开始
 
 ### 环境要求
@@ -60,7 +63,7 @@ tg-payment-bot/
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd tg-payment-bot
+cd eshow   # 若目录名不同请改为你的克隆路径
 
 # 2. 创建虚拟环境 (使用uv)
 uv venv --python 3.12

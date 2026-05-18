@@ -1,4 +1,4 @@
-# TG支付机器人系统架构设计文档
+# Eshow（易修）系统架构设计文档
 
 ## 1. 总体架构概述
 
@@ -17,7 +17,7 @@
 ┌───────────────────────────────────────────────────────────────────────┐
 │                           外部系统上下文                                 │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                       TG支付机器人系统                               │  │
+│  │                       Eshow（易修）系统                               │  │
 │  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐            │  │
 │  │  │  Telegram  │    │   FastAPI   │    │ PostgreSQL  │            │  │
 │  │  │     Bot    │◄──►│ Web Service │◄──►│  Database   │            │  │
@@ -105,7 +105,7 @@ class TelegramPaymentBot:
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-app = FastAPI(title="TG Payment Bot API", version="1.0.0")
+app = FastAPI(title="Eshow API", version="1.0.0")
 
 class PaymentRequest(BaseModel):
     telegram_id: int
@@ -410,7 +410,7 @@ class AlipayProvider(PaymentProvider):
         order_string = alipay.api_alipay_trade_page_pay(
             out_trade_no=request.payment_id,
             total_amount=str(request.amount),
-            subject=request.description or 'TG支付机器人订单'
+            subject=request.description or 'Eshow（易修）订单'
         )
 
         return PaymentResponse(
@@ -464,7 +464,7 @@ class WechatProvider(PaymentProvider):
             'appid': self.app_id,
             'mch_id': self.mch_id,
             'nonce_str': self._generate_nonce_str(),
-            'body': request.description or 'TG支付机器人订单',
+            'body': request.description or 'Eshow（易修）订单',
             'out_trade_no': request.payment_id,
             'total_fee': int(request.amount * 100),  # 转换为分
             'spbill_create_ip': request.client_ip,
