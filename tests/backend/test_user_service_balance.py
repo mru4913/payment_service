@@ -33,7 +33,7 @@ async def test_update_balance_raises_when_new_balance_below_held():
     svc = UserService(session)
     user = _make_user(balance=Decimal("10"), held=Decimal("8"))
 
-    svc.user_repo.get_by_telegram_id = AsyncMock(return_value=user)
+    svc.user_repo.get_by_telegram_id_for_update = AsyncMock(return_value=user)
 
     with pytest.raises(BalanceBelowHeldError) as ei:
         await svc.update_balance(1, Decimal("-5"), "withdraw")
@@ -46,7 +46,7 @@ async def test_update_balance_allows_when_above_held():
     svc = UserService(session)
     user = _make_user(balance=Decimal("10"), held=Decimal("8"))
 
-    svc.user_repo.get_by_telegram_id = AsyncMock(return_value=user)
+    svc.user_repo.get_by_telegram_id_for_update = AsyncMock(return_value=user)
     svc.user_repo.update = AsyncMock(side_effect=lambda u, d: u)
     svc.balance_repo.create = AsyncMock()
 

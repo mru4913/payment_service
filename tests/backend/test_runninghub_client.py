@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from backend.third_party.runninghub import (
     RunningHubAPIError,
     RunningHubClient,
     get_runninghub_client,
+    load_runninghub_priority_cost_map,
     load_runninghub_priority_instance_map,
     rh_instance_type_for_priority,
 )
@@ -317,9 +319,13 @@ async def test_get_runninghub_client_ok() -> None:
 def test_instance_type_map_from_catalog() -> None:
     catalog = _repo_root() / "backend" / "config" / "tier_platform_catalog.yaml"
     m = load_runninghub_priority_instance_map(catalog)
+    costs = load_runninghub_priority_cost_map(catalog)
     assert m["lite"] == ""
     assert m["default"] == "standard"
     assert m["plus"] == "plus"
+    assert costs["lite"] == Decimal("0.000016332")
+    assert costs["default"] == Decimal("0.000163317")
+    assert costs["plus"] == Decimal("0.000244976")
     assert rh_instance_type_for_priority("default", mapping=m) == "standard"
     assert rh_instance_type_for_priority("lite", mapping=m) == ""
 

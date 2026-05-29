@@ -84,11 +84,11 @@ async def test_settle_succeeded_computes_charge_when_missing():
     with patch.object(svc, "capture_hold_for_task", new_callable=AsyncMock) as cap:
         with patch.object(svc, "release_hold_for_task", new_callable=AsyncMock) as rel:
             await svc.settle_balance_hold_for_terminal_task(tid)
-            cap.assert_called_once_with(tid, Decimal("0.003000"))
+            cap.assert_called_once_with(tid, Decimal("0.000600"))
             rel.assert_not_called()
     update_payload = svc.task_repo.update.await_args.args[1]
     assert update_payload["billable_seconds"] == Decimal("3")
-    assert update_payload["charged_amount"] == Decimal("0.003000")
+    assert update_payload["charged_amount"] == Decimal("0.000600")
     assert update_payload["pricing_version"] == "2026-05-mvp"
 
 

@@ -21,6 +21,21 @@ from backend.workers.query_snapshot import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _skip_batch_terminal_side_effects(monkeypatch):
+    """Poll unit tests are DB-free unless a case explicitly opts into batch behavior."""
+    monkeypatch.setattr(
+        poll_tasks,
+        "handle_batch_task_terminal",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        poll_tasks,
+        "batch_success_missing_result",
+        AsyncMock(return_value=False),
+    )
+
+
 def test_anchor_time_prefers_started_at():
     t = MagicMock()
     t.started_at = datetime(2024, 1, 2)
@@ -144,6 +159,319 @@ def test_query_task_result_to_payload_keeps_duration():
     }
 
 
+def test_poll_terminal_status_aliases_are_terminal():
+    assert "COMPLETED" in poll_tasks._SUCCESS_STATUSES
+    assert "ERROR" in poll_tasks._FAILED_STATUSES
+
+
+@pytest.mark.asyncio
+async def test_handle_query_success_notifies_user(monkeypatch):
+    tid = uuid.uuid4()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    qr = QueryTaskResult(
+        task_id="up-1",
+        status="SUCCESS",
+        results=[
+            MagicMock(url="https://cdn.example/result.png", output_type="png"),
+        ],
+        raw={},
+    )
+    rh = MagicMock()
+    rh.query_task = AsyncMock(return_value=qr)
+
+    async def fake_cas(self, task_id, **kwargs):
+        assert task_id == tid
+        assert kwargs["terminal_status"] == TaskStatus.SUCCEEDED.value
+        assert kwargs["result_payload"]["query"]["results"][0]["url"].endswith(
+            "result.png"
+        )
+        return True
+
+    monkeypatch.setattr(
+        poll_tasks.TaskRepository,
+        "cas_transition_running_to_terminal",
+        fake_cas,
+    )
+    monkeypatch.setattr(
+        poll_tasks,
+        "settle_task_balance_hold_async",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(poll_tasks, "release_slot", AsyncMock())
+    notify = AsyncMock()
+    monkeypatch.setattr(poll_tasks, "send_task_success_images_to_user", notify)
+
+    outer = MagicMock()
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *a):
+            return None
+
+    outer.begin = lambda: _Begin()
+
+    class _Sess:
+        async def __aenter__(self):
+            return outer
+
+        async def __aexit__(self, *a):
+            return None
+
+    monkeypatch.setattr(
+        poll_tasks.async_session_maker,
+        "__call__",
+        lambda: _Sess(),
+    )
+
+    stats = poll_tasks._PollBatchCounters()
+
+    await poll_tasks._handle_query_outcome(
+        task_id=tid,
+        telegram_id=7,
+        upstream_task_id="up-1",
+        now=now,
+        rh_client=rh,
+        stats=stats,
+    )
+
+    notify.assert_awaited_once()
+    kwargs = notify.await_args.kwargs
+    assert kwargs["telegram_id"] == 7
+    assert kwargs["task_id"] == tid
+    assert kwargs["result_payload"]["query"]["results"][0]["output_type"] == "png"
+
+
+@pytest.mark.asyncio
+async def test_handle_query_success_skips_single_notify_for_batch(monkeypatch):
+    tid = uuid.uuid4()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    qr = QueryTaskResult(
+        task_id="up-1",
+        status="SUCCESS",
+        results=[
+            MagicMock(url="https://cdn.example/result.png", output_type="png"),
+        ],
+        raw={},
+    )
+    rh = MagicMock()
+    rh.query_task = AsyncMock(return_value=qr)
+    monkeypatch.setattr(
+        poll_tasks.TaskRepository,
+        "cas_transition_running_to_terminal",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(poll_tasks, "settle_task_balance_hold_async", AsyncMock())
+    monkeypatch.setattr(poll_tasks, "release_slot", AsyncMock())
+    monkeypatch.setattr(
+        poll_tasks,
+        "handle_batch_task_terminal",
+        AsyncMock(return_value=True),
+    )
+    notify = AsyncMock()
+    monkeypatch.setattr(poll_tasks, "send_task_success_images_to_user", notify)
+
+    outer = MagicMock()
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *a):
+            return None
+
+    outer.begin = lambda: _Begin()
+
+    class _Sess:
+        async def __aenter__(self):
+            return outer
+
+        async def __aexit__(self, *a):
+            return None
+
+    monkeypatch.setattr(
+        poll_tasks.async_session_maker,
+        "__call__",
+        lambda: _Sess(),
+    )
+
+    await poll_tasks._handle_query_outcome(
+        task_id=tid,
+        telegram_id=7,
+        upstream_task_id="up-1",
+        now=now,
+        rh_client=rh,
+        stats=poll_tasks._PollBatchCounters(),
+    )
+
+    notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handle_query_success_without_image_fails_batch_task(monkeypatch):
+    tid = uuid.uuid4()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    qr = QueryTaskResult(
+        task_id="up-1",
+        status="SUCCESS",
+        results=[],
+        raw={},
+    )
+    rh = MagicMock()
+    rh.query_task = AsyncMock(return_value=qr)
+
+    async def fake_cas(self, task_id, **kwargs):
+        assert task_id == tid
+        assert kwargs["terminal_status"] == TaskStatus.FAILED.value
+        assert kwargs["error_code"] == "batch_no_result_image"
+        assert kwargs["error_message"] == "任务成功但未返回结果图片"
+        return True
+
+    monkeypatch.setattr(
+        poll_tasks,
+        "batch_success_missing_result",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        poll_tasks.TaskRepository,
+        "cas_transition_running_to_terminal",
+        fake_cas,
+    )
+    monkeypatch.setattr(poll_tasks, "settle_task_balance_hold_async", AsyncMock())
+    monkeypatch.setattr(poll_tasks, "release_slot", AsyncMock())
+    handle_batch = AsyncMock(return_value=True)
+    monkeypatch.setattr(poll_tasks, "handle_batch_task_terminal", handle_batch)
+    success_notify = AsyncMock()
+    failed_notify = AsyncMock()
+    monkeypatch.setattr(
+        poll_tasks,
+        "send_task_success_images_to_user",
+        success_notify,
+    )
+    monkeypatch.setattr(
+        poll_tasks,
+        "send_task_failed_message_to_user",
+        failed_notify,
+    )
+
+    outer = MagicMock()
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *a):
+            return None
+
+    outer.begin = lambda: _Begin()
+
+    class _Sess:
+        async def __aenter__(self):
+            return outer
+
+        async def __aexit__(self, *a):
+            return None
+
+    monkeypatch.setattr(
+        poll_tasks.async_session_maker,
+        "__call__",
+        lambda: _Sess(),
+    )
+
+    await poll_tasks._handle_query_outcome(
+        task_id=tid,
+        telegram_id=7,
+        upstream_task_id="up-1",
+        now=now,
+        rh_client=rh,
+        stats=poll_tasks._PollBatchCounters(),
+    )
+
+    handle_batch.assert_awaited_once()
+    assert handle_batch.await_args.kwargs["terminal_status"] == TaskStatus.FAILED.value
+    success_notify.assert_not_awaited()
+    failed_notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handle_query_failure_notifies_user(monkeypatch):
+    tid = uuid.uuid4()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    qr = QueryTaskResult(
+        task_id="up-1",
+        status="FAILED",
+        error_code="bad_prompt",
+        error_message="upstream rejected",
+        results=None,
+        raw={},
+    )
+    rh = MagicMock()
+    rh.query_task = AsyncMock(return_value=qr)
+
+    async def fake_cas(self, task_id, **kwargs):
+        assert task_id == tid
+        assert kwargs["terminal_status"] == TaskStatus.FAILED.value
+        assert kwargs["error_code"] == "bad_prompt"
+        assert kwargs["error_message"] == "upstream rejected"
+        return True
+
+    monkeypatch.setattr(
+        poll_tasks.TaskRepository,
+        "cas_transition_running_to_terminal",
+        fake_cas,
+    )
+    monkeypatch.setattr(
+        poll_tasks,
+        "settle_task_balance_hold_async",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(poll_tasks, "release_slot", AsyncMock())
+    notify = AsyncMock()
+    monkeypatch.setattr(poll_tasks, "send_task_failed_message_to_user", notify)
+
+    outer = MagicMock()
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *a):
+            return None
+
+    outer.begin = lambda: _Begin()
+
+    class _Sess:
+        async def __aenter__(self):
+            return outer
+
+        async def __aexit__(self, *a):
+            return None
+
+    monkeypatch.setattr(
+        poll_tasks.async_session_maker,
+        "__call__",
+        lambda: _Sess(),
+    )
+
+    stats = poll_tasks._PollBatchCounters()
+
+    await poll_tasks._handle_query_outcome(
+        task_id=tid,
+        telegram_id=7,
+        upstream_task_id="up-1",
+        now=now,
+        rh_client=rh,
+        stats=stats,
+    )
+
+    notify.assert_awaited_once()
+    kwargs = notify.await_args.kwargs
+    assert kwargs["telegram_id"] == 7
+    assert kwargs["task_id"] == tid
+    assert kwargs["error_message"] == "upstream rejected"
+
+
 @pytest.mark.asyncio
 async def test_handle_timeout_discard_settles_on_cas_true(monkeypatch):
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -181,6 +509,8 @@ async def test_handle_timeout_discard_settles_on_cas_true(monkeypatch):
 
     monkeypatch.setattr(poll_tasks, "settle_task_balance_hold_async", fake_settle)
     monkeypatch.setattr(poll_tasks, "release_slot", fake_release)
+    notify = AsyncMock()
+    monkeypatch.setattr(poll_tasks, "send_task_failed_message_to_user", notify)
 
     outer = MagicMock()
 
@@ -220,6 +550,73 @@ async def test_handle_timeout_discard_settles_on_cas_true(monkeypatch):
     )
     assert settle_calls == [tid]
     assert release_calls == [7]
+    notify.assert_awaited_once()
+    assert notify.await_args.kwargs["telegram_id"] == 7
+    assert notify.await_args.kwargs["task_id"] == tid
+    assert "running exceeded" in notify.await_args.kwargs["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_handle_query_failure_does_not_notify_on_cas_miss(monkeypatch):
+    tid = uuid.uuid4()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    qr = QueryTaskResult(
+        task_id="up-1",
+        status="FAILED",
+        error_code="bad_prompt",
+        error_message="upstream rejected",
+        results=None,
+        raw={},
+    )
+    rh = MagicMock()
+    rh.query_task = AsyncMock(return_value=qr)
+
+    monkeypatch.setattr(
+        poll_tasks.TaskRepository,
+        "cas_transition_running_to_terminal",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(poll_tasks, "settle_task_balance_hold_async", AsyncMock())
+    monkeypatch.setattr(poll_tasks, "release_slot", AsyncMock())
+    notify = AsyncMock()
+    monkeypatch.setattr(poll_tasks, "send_task_failed_message_to_user", notify)
+
+    outer = MagicMock()
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *a):
+            return None
+
+    outer.begin = lambda: _Begin()
+
+    class _Sess:
+        async def __aenter__(self):
+            return outer
+
+        async def __aexit__(self, *a):
+            return None
+
+    monkeypatch.setattr(
+        poll_tasks.async_session_maker,
+        "__call__",
+        lambda: _Sess(),
+    )
+
+    stats = poll_tasks._PollBatchCounters()
+
+    await poll_tasks._handle_query_outcome(
+        task_id=tid,
+        telegram_id=7,
+        upstream_task_id="up-1",
+        now=now,
+        rh_client=rh,
+        stats=stats,
+    )
+
+    notify.assert_not_awaited()
 
 
 def test_poll_terminal_celery_task_invokes_asyncio_run():

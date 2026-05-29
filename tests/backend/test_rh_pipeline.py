@@ -52,8 +52,12 @@ def _make_task(
     t.upstream_task_id = upstream_task_id
     t.celery_task_id = celery_task_id
     t.input_payload = input_payload or {
-        "source_image": "https://example.com/src.jpg",
-        "target_image": "https://example.com/tgt.jpg",
+        "face_images": [
+            "https://example.com/face1.jpg",
+            "https://example.com/face2.jpg",
+        ],
+        "target_image": "https://example.com/target.jpg",
+        "restore": False,
     }
     t.telegram_id = 888001
     return t
@@ -65,8 +69,12 @@ _FACE_SWAP_RECIPE = WorkflowRecipe(
     workflow_id="wf_face",
     description="AI 换脸",
     nodes={
-        "source_image": NodeSpec("12", "image", True),
-        "target_image": NodeSpec("15", "image", True),
+        "face_image_1": NodeSpec("45", "image", True),
+        "face_image_2": NodeSpec("46", "image", True),
+        "face_image_3": NodeSpec("47", "image", True),
+        "face_image_4": NodeSpec("48", "image", True),
+        "target_image": NodeSpec("70", "image", True),
+        "restore": NodeSpec("262", "value", False),
     },
 )
 
@@ -101,8 +109,11 @@ def mock_rh_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     client = AsyncMock()
     client.upload_media = AsyncMock(
         side_effect=[
-            UploadResult(file_name="uploaded_src.png"),
-            UploadResult(file_name="uploaded_tgt.png"),
+            UploadResult(file_name="uploaded_face_1.png"),
+            UploadResult(file_name="uploaded_face_2.png"),
+            UploadResult(file_name="uploaded_face_3.png"),
+            UploadResult(file_name="uploaded_face_4.png"),
+            UploadResult(file_name="uploaded_target.png"),
         ]
     )
     client.create_comfy_task = AsyncMock(
@@ -179,6 +190,7 @@ def _patch_db(
 
     monkeypatch.setattr(mod, "async_session_maker", _FakeSessionMaker())
     monkeypatch.setattr(mod, "TaskRepository", lambda _session: fake_repo)
+    monkeypatch.setattr(mod, "mark_batch_task_running", AsyncMock())
 
 
 @pytest.mark.asyncio
@@ -194,16 +206,21 @@ async def test_pipeline_happy_path(
 
     await run_runninghub_pipeline(task_id, celery_task_id="celery_123")
 
-    assert mock_download.call_count == 2
-    assert mock_rh_client.upload_media.call_count == 2
+    assert mock_download.call_count == 5
+    assert mock_rh_client.upload_media.call_count == 5
     assert mock_rh_client.create_comfy_task.call_count == 1
 
     params = mock_rh_client.create_comfy_task.call_args[0][0]
     assert params.workflow_id == "wf_face"
-    assert len(params.node_info_list) == 2
-    assert params.webhook_url == (
-        f"https://hook.test/api/webhooks/runninghub/{task_id}"
-    )
+    assert len(params.node_info_list) == 6
+    by_node = {node.node_id: node for node in params.node_info_list}
+    assert by_node["45"].field_value == "uploaded_face_1.png"
+    assert by_node["46"].field_value == "uploaded_face_2.png"
+    assert by_node["47"].field_value == "uploaded_face_3.png"
+    assert by_node["48"].field_value == "uploaded_face_4.png"
+    assert by_node["70"].field_value == "uploaded_target.png"
+    assert by_node["262"].field_value is False
+    assert params.webhook_url is None
 
     assert fake_task.upstream_task_id == "rh_task_001"
     assert fake_task.status == TaskStatus.RUNNING.value
@@ -270,6 +287,9 @@ async def test_pipeline_create_fails(
     with pytest.raises(RunningHubAPIError):
         await run_runninghub_pipeline(task_id)
 
+    assert fake_task.status == TaskStatus.FAILED.value
+    assert fake_task.error_code == "10001"
+    assert fake_task.error_message == "rh error"
     mock_rh_client.aclose.assert_awaited_once()
 
 

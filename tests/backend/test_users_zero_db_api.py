@@ -150,3 +150,25 @@ async def test_get_user_transactions_total_is_count(client_no_auth):
         assert len(r.json()["transactions"]) == 1
     finally:
         app.dependency_overrides.pop(balance_service_read, None)
+
+
+@pytest.mark.asyncio
+async def test_manual_balance_update_endpoint_is_disabled(client_no_auth):
+    app = client_no_auth.app
+
+    class FakeWrite:
+        async def update_balance(self, *args, **kwargs):
+            raise AssertionError("manual balance endpoint should not mutate")
+
+    async def fake_write():
+        return FakeWrite()
+
+    app.dependency_overrides[user_service_write] = fake_write
+    try:
+        r = await client_no_auth.put(
+            "/users/1/balance",
+            params={"amount": "5", "transaction_type": "deposit"},
+        )
+        assert r.status_code == 403
+    finally:
+        app.dependency_overrides.pop(user_service_write, None)

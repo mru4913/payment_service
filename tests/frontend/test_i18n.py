@@ -1,5 +1,8 @@
 """i18n 国际化模块单元测试"""
 
+import json
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -10,6 +13,20 @@ from frontend.core.i18n import (
     _resolve,
     SUPPORTED_LANGS,
 )
+
+LOCALES_DIR = Path(__file__).resolve().parents[2] / "frontend" / "locales"
+PLACEHOLDER_RE = re.compile(r"(?<!{){([a-zA-Z_][a-zA-Z0-9_]*)}(?!})")
+
+
+def _flatten_locale(data: dict, prefix: str = "") -> dict[str, str]:
+    out: dict[str, str] = {}
+    for key, value in data.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            out.update(_flatten_locale(value, path))
+        else:
+            out[path] = str(value)
+    return out
 
 
 class TestResolve:
@@ -44,6 +61,12 @@ class TestT:
         data = {"msg": "Hello {name}"}
         with patch("frontend.core.i18n._load_lang", return_value=data):
             assert t("msg", name="World") == "Hello World"
+
+    def test_language_changed_placeholder_does_not_conflict_with_locale(self):
+        assert (
+            t("language.changed", lang="zh_hans", language="简体中文")
+            == "✅ 语言已切换为：简体中文"
+        )
 
     def test_format_missing_kwarg_returns_raw(self):
         data = {"msg": "Hello {name}"}
@@ -96,3 +119,26 @@ class TestLangDisplayName:
 
     def test_unknown_lang(self):
         assert lang_display_name("fr") == "fr"
+
+
+def test_locale_files_have_matching_keys_and_placeholders():
+    """All supported locale JSON files should expose the same message contract."""
+    flattened: dict[str, dict[str, str]] = {}
+    for lang in SUPPORTED_LANGS:
+        path = LOCALES_DIR / lang / "messages.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        flattened[lang] = _flatten_locale(data)
+
+    reference_lang = SUPPORTED_LANGS[0]
+    reference_keys = set(flattened[reference_lang])
+    for lang in SUPPORTED_LANGS[1:]:
+        assert set(flattened[lang]) == reference_keys
+
+    for key in sorted(reference_keys):
+        reference_placeholders = set(
+            PLACEHOLDER_RE.findall(flattened[reference_lang][key])
+        )
+        for lang in SUPPORTED_LANGS[1:]:
+            assert set(PLACEHOLDER_RE.findall(flattened[lang][key])) == (
+                reference_placeholders
+            )

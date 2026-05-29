@@ -2,7 +2,7 @@
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -87,6 +87,7 @@ async def test_run_compute_retries_until_task_row_visible():
     repo_inst.get_by_task_id = AsyncMock(
         side_effect=[None, fake_task, fake_task],
     )
+    repo_inst.claim_queued_task_for_worker = AsyncMock(return_value=True)
     repo_inst.update = AsyncMock()
 
     with patch(
@@ -110,4 +111,38 @@ async def test_run_compute_retries_until_task_row_visible():
                     )
 
     assert repo_inst.get_by_task_id.await_count == 3
+    repo_inst.claim_queued_task_for_worker.assert_awaited_once_with(
+        tid,
+        "celery-test-id",
+        ANY,
+    )
     promote.assert_awaited_once_with(tid)
+
+
+@pytest.mark.asyncio
+async def test_run_compute_skips_when_task_already_claimed():
+    tid = uuid.uuid4()
+    fake_task = SimpleNamespace(
+        status=TaskStatus.QUEUED.value,
+        celery_task_id="other-celery-id",
+        third_party_platform="runninghub",
+    )
+    repo_inst = MagicMock()
+    repo_inst.get_by_task_id = AsyncMock(return_value=fake_task)
+    repo_inst.claim_queued_task_for_worker = AsyncMock(return_value=False)
+
+    with patch(
+        "backend.workers.compute_runner.async_session_maker",
+        _session_maker_with_begin(),
+    ):
+        with patch(
+            "backend.workers.compute_runner.TaskRepository",
+            return_value=repo_inst,
+        ):
+            with patch(
+                "backend.workers.compute_runner._dispatch",
+                new_callable=AsyncMock,
+            ) as dispatch:
+                await run_compute_task_for_worker(tid, celery_task_id="celery-test-id")
+
+    dispatch.assert_not_awaited()

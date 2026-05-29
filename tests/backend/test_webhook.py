@@ -14,7 +14,9 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
+from backend.api.main import create_api_app
 from backend.api.routers.webhooks import _parse_event_data, _process_webhook
 from backend.domain.task_enums import TaskStatus, ThirdPartyPlatform
 
@@ -60,6 +62,21 @@ class TestParseEventData:
 
 
 # ── _process_webhook ──
+
+
+@pytest.mark.asyncio
+async def test_runninghub_webhook_route_not_mounted_for_mvp():
+    app = create_api_app()
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            f"/api/webhooks/runninghub/{uuid.uuid4()}",
+            json={"event": "TASK_END"},
+        )
+
+    assert response.status_code == 404
 
 
 @pytest.fixture()
