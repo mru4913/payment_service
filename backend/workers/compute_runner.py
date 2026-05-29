@@ -23,7 +23,9 @@ from ..database.session import async_session_maker
 from ..domain.task_enums import TaskStatus, ThirdPartyPlatform
 from ..third_party.runninghub import RunningHubAPIError
 from ..globals import logger
+from .batch_results import handle_batch_task_terminal
 from .rh_pipeline import run_runninghub_pipeline
+from .slot_limiter import SlotBusyError
 from .task_settlement import settle_task_balance_hold_async
 
 Outcome = Literal["succeeded", "failed", "cancelled"]
@@ -123,28 +125,54 @@ async def run_compute_task_for_worker(
         )
         return
 
-    settle_only = False
-    should_run = False
+    if task.status in _TERMINAL_STATUSES:
+        await settle_task_balance_hold_async(task_id)
+        return
+
+    claim_id = celery_task_id or f"local-{task_id}"
+    claimed = False
     platform: str = ""
     async with async_session_maker() as session:
         async with session.begin():
             repo = TaskRepository(session)
-            task = await repo.get_by_task_id(task_id)
-            if not task:
-                logger.warning("compute_runner: task vanished task_id=%s", task_id)
-                return
-            if task.status in _TERMINAL_STATUSES:
-                settle_only = True
-            else:
-                if task.celery_task_id is None and celery_task_id:
-                    await repo.update(task, {"celery_task_id": celery_task_id})
-                should_run = True
+            claimed = await repo.claim_queued_task_for_worker(
+                task_id,
+                claim_id,
+                datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+            if claimed:
+                task = await repo.get_by_task_id(task_id)
+                if not task:
+                    logger.warning("compute_runner: task vanished task_id=%s", task_id)
+                    return
                 platform = task.third_party_platform
 
-    if settle_only:
-        await settle_task_balance_hold_async(task_id)
-    elif should_run:
-        await _dispatch(task_id, platform, celery_task_id)
+    if not claimed:
+        async with async_session_maker() as session:
+            async with session.begin():
+                repo = TaskRepository(session)
+                current = await repo.get_by_task_id(task_id)
+        if current and current.status in _TERMINAL_STATUSES:
+            await settle_task_balance_hold_async(task_id)
+        else:
+            logger.info(
+                "compute_runner: task already claimed or not queued task_id=%s "
+                "celery_task_id=%s status=%s claimed_by=%s",
+                task_id,
+                claim_id,
+                getattr(current, "status", "-"),
+                getattr(current, "celery_task_id", "-"),
+            )
+        return
+
+    try:
+        await _dispatch(task_id, platform, claim_id)
+    except SlotBusyError:
+        async with async_session_maker() as session:
+            async with session.begin():
+                repo = TaskRepository(session)
+                await repo.clear_queued_task_claim(task_id, claim_id)
+        raise
 
 
 async def _dispatch(
@@ -165,5 +193,10 @@ async def _dispatch(
                 task_id,
             )
             await settle_task_balance_hold_async(task_id)
+            await handle_batch_task_terminal(
+                task_id=task_id,
+                terminal_status=TaskStatus.FAILED.value,
+                error_message="RunningHub 创建任务失败",
+            )
     else:
         await promote_task_to_terminal_and_settle(task_id)

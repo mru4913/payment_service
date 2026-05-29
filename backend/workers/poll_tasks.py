@@ -22,8 +22,15 @@ from ..third_party.runninghub import (
 from .query_snapshot import build_query_snapshot, query_task_result_to_payload
 from .slot_limiter import release_slot
 from .task_settlement import settle_task_balance_hold_async
+from .telegram_notify import (
+    send_task_failed_message_to_user,
+    send_task_success_images_to_user,
+)
+from .batch_results import batch_success_missing_result, handle_batch_task_terminal
 
 POLL_TIMEOUT_ERROR_CODE = "poll_running_timeout"
+_SUCCESS_STATUSES = {"SUCCESS", "SUCCEEDED", "COMPLETED", "COMPLETE", "FINISHED"}
+_FAILED_STATUSES = {"FAILED", "FAIL", "ERROR", "CANCELLED", "CANCELED"}
 
 
 @dataclass
@@ -138,6 +145,20 @@ async def _handle_timeout_discard(
     await stats.record_terminal_cas(ok)
     if ok:
         await _settle_and_release_slot(task_id, telegram_id)
+        is_batch = await handle_batch_task_terminal(
+            task_id=task_id,
+            terminal_status=TaskStatus.FAILED.value,
+            result_payload=result_payload,
+            error_message=err_msg,
+        )
+        if is_batch:
+            return
+        await send_task_failed_message_to_user(
+            settings=settings,
+            telegram_id=telegram_id,
+            task_id=task_id,
+            error_message=err_msg,
+        )
 
 
 async def _handle_query_outcome(
@@ -171,24 +192,58 @@ async def _handle_query_outcome(
         return
 
     st = (qr.status or "").strip().upper()
-    if st == "SUCCESS":
+    if st in _SUCCESS_STATUSES:
         query_payload = query_task_result_to_payload(qr)
         result_payload: dict[str, Any] = {"query": query_payload}
+        terminal_status = TaskStatus.SUCCEEDED.value
+        error_code: str | None = None
+        error_message: str | None = None
+        if await batch_success_missing_result(
+            task_id=task_id,
+            result_payload=result_payload,
+        ):
+            terminal_status = TaskStatus.FAILED.value
+            error_code = "batch_no_result_image"
+            error_message = "任务成功但未返回结果图片"
         async with async_session_maker() as session:
             async with session.begin():
                 repo = TaskRepository(session)
                 ok = await repo.cas_transition_running_to_terminal(
                     task_id,
-                    terminal_status=TaskStatus.SUCCEEDED.value,
+                    terminal_status=terminal_status,
                     completed_at=now,
                     result_payload=result_payload,
+                    error_code=error_code,
+                    error_message=error_message,
                 )
         await stats.record_terminal_cas(ok)
         if ok:
             await _settle_and_release_slot(task_id, telegram_id)
+            is_batch = await handle_batch_task_terminal(
+                task_id=task_id,
+                terminal_status=terminal_status,
+                result_payload=result_payload,
+                error_message=error_message,
+            )
+            if is_batch:
+                return
+            if terminal_status != TaskStatus.SUCCEEDED.value:
+                await send_task_failed_message_to_user(
+                    settings=settings,
+                    telegram_id=telegram_id,
+                    task_id=task_id,
+                    error_message=error_message,
+                )
+                return
+            await send_task_success_images_to_user(
+                settings=settings,
+                telegram_id=telegram_id,
+                task_id=task_id,
+                result_payload=result_payload,
+            )
         return
 
-    if st == "FAILED":
+    if st in _FAILED_STATUSES:
         query_payload = query_task_result_to_payload(qr)
         result_payload = {"query": query_payload}
         err_code = (qr.error_code or "rh_query_failed")[:64]
@@ -207,6 +262,20 @@ async def _handle_query_outcome(
         await stats.record_terminal_cas(ok)
         if ok:
             await _settle_and_release_slot(task_id, telegram_id)
+            is_batch = await handle_batch_task_terminal(
+                task_id=task_id,
+                terminal_status=TaskStatus.FAILED.value,
+                result_payload=result_payload,
+                error_message=err_msg,
+            )
+            if is_batch:
+                return
+            await send_task_failed_message_to_user(
+                settings=settings,
+                telegram_id=telegram_id,
+                task_id=task_id,
+                error_message=err_msg,
+            )
         return
 
     await stats.record_still_in_progress()

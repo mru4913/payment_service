@@ -49,6 +49,9 @@ celery_app.conf.update(
 celery_app.conf.task_routes = {
     "tasks.execute_compute": {"queue": "compute"},
     "tasks.poll_terminal": {"queue": "maintenance"},
+    "tasks.poll_plisio_payments": {"queue": "maintenance"},
+    "tasks.package_batch_result": {"queue": "maintenance"},
+    "tasks.requeue_queued_compute_tasks": {"queue": "maintenance"},
 }
 
 _beat_schedule: dict = {}
@@ -56,5 +59,19 @@ if _settings.poll_enabled and _settings.celery_broker_url:
     _beat_schedule["poll_schedule"] = {
         "task": "tasks.poll_terminal",
         "schedule": timedelta(seconds=max(5, int(_settings.poll_interval_sec))),
+    }
+if _settings.payment_poll_enabled and _settings.celery_broker_url:
+    _beat_schedule["payment_poll_schedule"] = {
+        "task": "tasks.poll_plisio_payments",
+        "schedule": timedelta(
+            seconds=max(5, int(_settings.payment_poll_interval_sec))
+        ),
+    }
+if _settings.compute_requeue_enabled and _settings.celery_broker_url:
+    _beat_schedule["compute_requeue_schedule"] = {
+        "task": "tasks.requeue_queued_compute_tasks",
+        "schedule": timedelta(
+            seconds=max(5, int(_settings.compute_requeue_interval_sec))
+        ),
     }
 celery_app.conf.beat_schedule = _beat_schedule

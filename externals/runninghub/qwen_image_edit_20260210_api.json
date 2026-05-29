@@ -45,16 +45,6 @@
       "title": "VAE Decode"
     }
   },
-  "37": {
-    "inputs": {
-      "unet_name": "Qwen_Edit_2511_NSFW.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "Load Diffusion Model"
-    }
-  },
   "38": {
     "inputs": {
       "clip_name": "qwen_2.5_vl_7b.safetensors",
@@ -141,7 +131,7 @@
       "lora_name": "consistent-4--30-2511.safetensors",
       "strength_model": 0.6,
       "model": [
-        "37",
+        "117",
         0
       ]
     },
@@ -195,6 +185,15 @@
     "class_type": "TextEncodeQwenImageEditPlus",
     "_meta": {
       "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "117": {
+    "inputs": {
+      "ckpt_name": "Qwen-Rapid-AIO-NSFW-v23.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
     }
   }
 }

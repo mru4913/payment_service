@@ -47,7 +47,9 @@ from .recipe import (
     build_node_info_list_from_recipe,
     get_recipe,
     load_recipes,
+    normalize_input_payload,
 )
+from .batch_results import mark_batch_task_running
 
 _recipes: dict[str, WorkflowRecipe] | None = None
 
@@ -136,17 +138,31 @@ async def run_runninghub_pipeline(
             err_msg = "input_payload missing required field 'workflow_id'"
             await _mark_failed(task_id, "missing_workflow_id", err_msg)
             raise RunningHubAPIError(err_msg)
+    try:
+        input_payload = normalize_input_payload(recipe, input_payload)
+    except ValueError as exc:
+        err_msg = str(exc)
+        logger.warning(
+            "rh_pipeline: invalid_input_payload task_id=%s task_type=%s error=%s",
+            task_id,
+            task_type,
+            err_msg,
+        )
+        await _mark_failed(task_id, "invalid_input_payload", err_msg)
+        raise RunningHubAPIError(err_msg) from exc
 
     # ── 4. 构建 node_info_list ──
     rh_client: RunningHubClient = get_runninghub_client(settings)
     slot_acquired = False
     try:
+        upload_node_count = 0
         if recipe.nodes is not None:
             # 配方翻译模式
             uploaded: dict[str, str] = {}
             for payload_key, spec in recipe.nodes.items():
                 if not spec.upload:
                     continue
+                upload_node_count += 1
                 file_url = input_payload.get(payload_key)
                 if not file_url:
                     err_msg = f"input_payload missing upload field '{payload_key}'"
@@ -179,6 +195,7 @@ async def run_runninghub_pipeline(
                 )
                 for n in raw_nodes
             ]
+            node_count = len(node_info_list)
         else:
             # 透传模式
             raw_list = input_payload.get("node_info_list", [])
@@ -191,23 +208,44 @@ async def run_runninghub_pipeline(
                 for n in raw_list
                 if isinstance(n, dict)
             ]
+            node_count = len(node_info_list)
 
         # ── 5. instanceType ──
         instance_type = rh_instance_type_for_priority(priority_type)
 
         # ── 6. webhookUrl ──
+        # MVP 只使用 worker_poll 收敛终态；未启用签名校验前不向 RH 注册 webhook。
         webhook_url: str | None = None
         if settings.runninghub_webhook_public_base_url:
-            webhook_url = (
-                f"{settings.runninghub_webhook_public_base_url.rstrip('/')}"
-                f"/api/webhooks/runninghub/{task_id}"
+            logger.warning(
+                "rh_pipeline: webhook_base_configured_but_disabled task_id=%s",
+                task_id,
             )
 
         # ── 7. 槽位 + create_comfy_task ──
         if not await try_acquire_slot(settings, telegram_id):
+            logger.warning(
+                "rh_pipeline: slot_busy task_id=%s telegram_id=%s priority=%s",
+                task_id,
+                telegram_id,
+                priority_type,
+            )
             raise SlotBusyError()
         slot_acquired = True
 
+        logger.info(
+            "rh_pipeline: create_start task_id=%s telegram_id=%s task_type=%s "
+            "workflow_id=%s instance_type=%s node_count=%s upload_nodes=%s "
+            "webhook=%s",
+            task_id,
+            telegram_id,
+            task_type,
+            workflow_id,
+            instance_type,
+            node_count,
+            upload_node_count,
+            bool(webhook_url),
+        )
         params = CreateTaskParams(
             workflow_id=workflow_id,
             node_info_list=node_info_list,
@@ -218,10 +256,21 @@ async def run_runninghub_pipeline(
 
     except SlotBusyError:
         raise
-    except RunningHubAPIError:
+    except RunningHubAPIError as exc:
         if slot_acquired:
             await release_slot(settings, telegram_id)
             slot_acquired = False
+        error_code = str(exc.rh_code or "rh_create_failed")
+        await _mark_failed(task_id, error_code, str(exc))
+        logger.warning(
+            "rh_pipeline: runninghub_error task_id=%s telegram_id=%s "
+            "http_status=%s rh_code=%s error=%s",
+            task_id,
+            telegram_id,
+            exc.http_status,
+            exc.rh_code,
+            str(exc),
+        )
         raise
     except httpx.HTTPError as exc:
         if slot_acquired:
@@ -263,7 +312,9 @@ async def run_runninghub_pipeline(
         raise
 
     logger.info(
-        "rh_pipeline: created upstream task_id=%s upstream=%s",
+        "rh_pipeline: created upstream task_id=%s upstream=%s telegram_id=%s",
         task_id,
         result.task_id,
+        telegram_id,
     )
+    await mark_batch_task_running(task_id)
