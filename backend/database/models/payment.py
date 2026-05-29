@@ -18,6 +18,7 @@ from sqlalchemy import (
     TIMESTAMP,
     Index,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -37,6 +38,13 @@ class Payment(Base):
         Index("idx_payment_status", "status"),
         Index("idx_payment_method_status", "payment_method", "status"),
         Index("idx_payment_external_id", "external_payment_id"),
+        Index(
+            "uq_payment_method_external_id",
+            "payment_method",
+            "external_payment_id",
+            unique=True,
+            postgresql_where=text("external_payment_id IS NOT NULL"),
+        ),
     )
 
     payment_id: Mapped[uuid.UUID] = mapped_column(

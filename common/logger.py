@@ -4,7 +4,33 @@
 
 import logging
 import logging.handlers
+from contextvars import ContextVar, Token
 from pathlib import Path
+
+_request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+def get_request_id() -> str:
+    """返回当前异步上下文的 request_id。"""
+    return _request_id_var.get()
+
+
+def set_request_id(request_id: str) -> Token[str]:
+    """设置当前异步上下文的 request_id，返回可 reset 的 token。"""
+    return _request_id_var.set(request_id or "-")
+
+
+def reset_request_id(token: Token[str]) -> None:
+    """恢复 request_id 上下文。"""
+    _request_id_var.reset(token)
+
+
+class RequestIdFilter(logging.Filter):
+    """给日志记录补充 request_id 字段。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = get_request_id()
+        return True
 
 
 class DailyRotatingLogger:
@@ -52,7 +78,7 @@ class DailyRotatingLogger:
         # 设置日志格式
         formatter = logging.Formatter(
             fmt=(
-                "[%(levelname)-5s] %(asctime)s.%(msecs)03d | "
+                "[%(levelname)-5s] %(asctime)s.%(msecs)03d | rid=%(request_id)s | "
                 "%(name)s | %(filename)s:%(lineno)d | "
                 "%(funcName)s() | %(message)s"
             ),
@@ -67,6 +93,7 @@ class DailyRotatingLogger:
             interval=1,  # 间隔1天
             backupCount=self.max_days,  # 保留文件数
         )
+        file_handler.addFilter(RequestIdFilter())
         file_handler.setFormatter(formatter)
         file_handler.setLevel(self.log_level)
         self.logger.addHandler(file_handler)
@@ -74,6 +101,7 @@ class DailyRotatingLogger:
         # 控制台处理器
         if self.console:
             console_handler = logging.StreamHandler()
+            console_handler.addFilter(RequestIdFilter())
             console_handler.setFormatter(formatter)
             console_handler.setLevel(self.log_level)
             self.logger.addHandler(console_handler)

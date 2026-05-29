@@ -6,6 +6,7 @@ API中间件配置
 """
 
 import time
+import uuid
 from collections import defaultdict
 
 from fastapi import Request
@@ -13,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from ..globals import logger
+from common.logger import reset_request_id, set_request_id
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -20,9 +22,19 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        token = set_request_id(request_id)
+        request.state.request_id = request_id
+        client = request.client.host if request.client else "unknown"
 
         # 记录请求开始
-        logger.info(f"Request started: {request.method} {request.url}")
+        logger.info(
+            "http_request_start request_id=%s method=%s path=%s client=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            client,
+        )
 
         try:
             # 处理请求
@@ -33,12 +45,18 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
             # 记录请求完成
             logger.info(
-                f"Request completed: {request.method} {request.url} - "
-                f"Status: {response.status_code} - Time: {process_time:.3f}s"
+                "http_request_complete request_id=%s method=%s path=%s "
+                "status=%s elapsed_ms=%s",
+                request_id,
+                request.method,
+                request.url.path,
+                response.status_code,
+                int(process_time * 1000),
             )
 
             # 添加处理时间到响应头
             response.headers["X-Process-Time"] = str(process_time)
+            response.headers["X-Request-ID"] = request_id
 
             return response
 
@@ -46,11 +64,18 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             # 记录错误
             process_time = time.time() - start_time
             logger.error(
-                f"Request failed: {request.method} {request.url} - "
-                f"Error: {str(e)} - Time: {process_time:.3f}s",
+                "http_request_failed request_id=%s method=%s path=%s "
+                "elapsed_ms=%s error=%s",
+                request_id,
+                request.method,
+                request.url.path,
+                int(process_time * 1000),
+                str(e),
                 exc_info=True,
             )
             raise
+        finally:
+            reset_request_id(token)
 
 
 def setup_cors_middleware(cors_origins: list[str]) -> dict:

@@ -14,6 +14,7 @@ from sqlalchemy import (
     BigInteger,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -127,6 +128,19 @@ class Task(Base):
     )
     celery_task_id: Mapped[str | None] = mapped_column(
         String(128), nullable=True, comment="Celery 任务 ID"
+    )
+    celery_claimed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP, nullable=True, comment="Worker 领取 Celery 任务时间"
+    )
+    last_enqueue_attempt_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP, nullable=True, comment="最近一次 Celery 入队尝试时间"
+    )
+    enqueue_attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="Celery 入队尝试次数",
     )
 
     user: Mapped["User"] = relationship("User", back_populates="tasks")

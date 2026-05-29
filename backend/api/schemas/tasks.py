@@ -10,13 +10,15 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...domain.task_enums import PriorityType, TaskStatus, ThirdPartyPlatform
 
 
 class CreateTaskRequest(BaseModel):
     """发起任务：结构化入参 + 可选说明与幂等键。"""
+
+    model_config = ConfigDict(extra="forbid")
 
     telegram_id: int = Field(
         ...,
@@ -48,20 +50,13 @@ class CreateTaskRequest(BaseModel):
         max_length=64,
         description="幂等键；同一 telegram_id 下唯一（非空时）",
     )
-    hold_amount: Decimal = Field(
-        ...,
-        gt=0,
-        description=(
-            "预授权冻结上限（与 balance 同币种）；增加 balance_held，"
-            "不减少总余额 balance"
-        ),
-    )
 
 
 class CreateTaskResponse(BaseModel):
     """创建成功后的最小响应。"""
 
     task_id: UUID = Field(..., description="任务 ID")
+    task_code: str = Field(..., description="用户可见短任务编号")
     status: TaskStatus = Field(..., description="当前状态，创建后通常为 queued")
     queued_at: datetime = Field(..., description="入队时间")
     created: bool = Field(
@@ -74,14 +69,11 @@ class TaskStatusResponse(BaseModel):
     """查询任务状态（轮询等）。"""
 
     task_id: UUID
+    task_code: str = Field(..., description="用户可见短任务编号")
     status: TaskStatus
     queued_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
-    upstream_task_id: str | None = Field(
-        default=None,
-        description="第三方运行实例 ID，成功提交上游后可能有值",
-    )
     billable_seconds: Decimal | None = Field(
         default=None,
         description="可计费秒数；成功任务按上游时长优先、本地时长兜底",
@@ -94,5 +86,27 @@ class TaskStatusResponse(BaseModel):
         default=None,
         description="本次结算使用的价目版本",
     )
+    result_images: list[str] = Field(
+        default_factory=list,
+        description="用户可见结果图片 URL；不包含上游任务 ID",
+    )
     error_code: str | None = None
     error_message: str | None = None
+
+
+class TaskListItem(BaseModel):
+    """任务历史列表项。"""
+
+    task_id: UUID
+    task_code: str = Field(..., description="用户可见短任务编号")
+    task_type: str
+    status: TaskStatus
+    queued_at: datetime
+
+
+class TaskListResponse(BaseModel):
+    """用户任务历史分页响应。"""
+
+    tasks: list[TaskListItem]
+    total: int
+    returned: int

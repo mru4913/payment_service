@@ -5,13 +5,12 @@
 用户相关API路由
 """
 
-import uuid
 from typing import Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from decimal import Decimal
 
-from ...services import BalanceBelowHeldError, BalanceService, UserService
+from ...services import BalanceService, UserService
 from ..dependencies import user_service_read, user_service_write, balance_service_read
 from ..schemas.users import UserPatchBody
 
@@ -142,38 +141,9 @@ async def update_user_balance(
     payment_id: Optional[str] = None,
     user_service: UserService = Depends(user_service_write),
 ):
-    """更新用户余额"""
-    payment_uuid: Optional[uuid.UUID] = None
-    if payment_id is not None and str(payment_id).strip() != "":
-        try:
-            payment_uuid = uuid.UUID(str(payment_id).strip())
-        except ValueError as e:
-            raise HTTPException(
-                status_code=422, detail="payment_id 须为合法 UUID"
-            ) from e
-
-    try:
-        user = await user_service.update_balance(
-            telegram_id=telegram_id,
-            amount=amount,
-            transaction_type=transaction_type,
-            payment_id=payment_uuid,
-            description=description,
-        )
-    except BalanceBelowHeldError as e:
-        raise HTTPException(
-            status_code=409,
-            detail={"message": e.message, "code": e.code},
-        ) from e
-
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-
-    return {
-        "telegram_id": user.telegram_id,
-        "new_balance": user.balance,
-        "transaction_type": transaction_type,
-    }
+    """手动余额调整 HTTP 入口已禁用；请使用独立运维脚本。"""
+    _ = telegram_id, amount, transaction_type, description, payment_id, user_service
+    raise HTTPException(status_code=403, detail="手动余额调整已禁用")
 
 
 @router.get("/{telegram_id}/balance")

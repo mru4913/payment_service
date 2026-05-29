@@ -8,8 +8,9 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from ..models import Payment
 from .base_repository import BaseRepository
@@ -27,9 +28,57 @@ class PaymentRepository(BaseRepository[Payment]):
         result = await self.db_session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def confirm_pending_payment(
+        self,
+        payment_id: uuid.UUID,
+        *,
+        external_payment_id: str,
+        completed_at: datetime,
+    ) -> Optional[Payment]:
+        """原子确认 pending 订单；未命中表示已被其它流程处理。"""
+        other = aliased(Payment)
+        duplicate_external = (
+            select(other.payment_id)
+            .where(
+                other.payment_method == Payment.payment_method,
+                other.external_payment_id == external_payment_id,
+                other.payment_id != payment_id,
+            )
+            .exists()
+        )
+        stmt = (
+            update(Payment)
+            .where(
+                Payment.payment_id == payment_id,
+                Payment.status == "pending",
+                ~duplicate_external,
+            )
+            .values(
+                status="completed",
+                external_payment_id=external_payment_id,
+                completed_at=completed_at,
+            )
+            .returning(Payment)
+        )
+        result = await self.db_session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_external_id(self, external_payment_id: str) -> Optional[Payment]:
         """根据外部支付ID获取支付记录"""
         stmt = select(Payment).where(Payment.external_payment_id == external_payment_id)
+        result = await self.db_session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_method_external_id(
+        self,
+        payment_method: str,
+        external_payment_id: str,
+    ) -> Optional[Payment]:
+        """根据支付方式 + 外部支付 ID 获取支付记录。"""
+        stmt = select(Payment).where(
+            Payment.payment_method == payment_method,
+            Payment.external_payment_id == external_payment_id,
+        )
         result = await self.db_session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -87,9 +136,18 @@ class PaymentRepository(BaseRepository[Payment]):
         limit: int,
     ) -> List[Payment]:
         """pending TRC20：按 created_at、payment_id 升序（FIFO），keyset 分页。"""
+        return await self.get_pending_by_method_keyset("trc20_usdt", cursor, limit)
+
+    async def get_pending_by_method_keyset(
+        self,
+        payment_method: str,
+        cursor: Optional[Tuple[datetime, uuid.UUID]],
+        limit: int,
+    ) -> List[Payment]:
+        """指定支付方式 pending：按 created_at、payment_id 升序（FIFO）。"""
         stmt = select(Payment).where(
             Payment.status == "pending",
-            Payment.payment_method == "trc20_usdt",
+            Payment.payment_method == payment_method,
         )
         if cursor is not None:
             after_created, after_id = cursor

@@ -53,6 +53,28 @@ class TaskService(BaseService):
             return None
         return task
 
+    async def get_task_by_ref_for_telegram(
+        self, task_ref: str, telegram_id: int
+    ) -> Optional[Task]:
+        """用用户可见短编号查询任务。"""
+        return await self.task_repo.get_by_public_task_ref(telegram_id, task_ref)
+
+    async def list_tasks_for_telegram(
+        self,
+        telegram_id: int,
+        *,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[Task], int]:
+        """用户任务历史分页。"""
+        tasks = await self.task_repo.get_user_tasks(
+            telegram_id,
+            skip=skip,
+            limit=limit,
+        )
+        total = await self.task_repo.count_user_tasks(telegram_id)
+        return tasks, total
+
     async def create_task_with_hold(
         self,
         telegram_id: int,

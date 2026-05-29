@@ -1,33 +1,41 @@
-# 算力档位展示、参考预授权、第三方平台及档位 → 上游实例类型映射。
+# 算力档位客户标价、第三方平台成本及档位 → 上游实例类型映射。
 # 与 backend/domain/task_enums.py 中 PriorityType（lite/default/plus）、
-# ThirdPartyPlatform 对齐。细分按 task_type 的计价见 pricing_table.yaml（若存在）。
+# ThirdPartyPlatform 对齐。
 
 version: 1
+pricing_version: "2026-05-mvp"
 
-# 档位：内部键 ↔ 中文名 ↔ 建议预授权（美元字符串，便于 Decimal）
+# 产品档位：内部键 ↔ 中文名 ↔ 客户标价（美元/秒，字符串便于 Decimal）
 priority_tiers:
   lite:
     display_name_zh: "普通"
-    suggested_hold_usd: "0.300000"
+    enabled: true
+    price_per_second_usd: "0.000200000"
   default:
-    display_name_zh: "高等"
-    suggested_hold_usd: "0.500000"
+    display_name_zh: "标准"
+    enabled: true
+    price_per_second_usd: "0.000720000"
   plus:
-    display_name_zh: "尊享"
-    suggested_hold_usd: "1.200000"
+    display_name_zh: "优先"
+    enabled: true
+    price_per_second_usd: "0.001400000"
 
 # 已接入或可扩展的第三方算力平台
 platforms:
   runninghub:
     display_name_zh: "RunningHub"
     enabled: true
-
-# 各平台：本系统 priority_type → RunningHub `instanceType`（lite / standard / plus）
-# 内部 `default`（高等）对应 RH 的 standard 档。
-platform_priority_mapping:
-  runninghub:
-    instance_type:
-      # 空字符串：请求体不传 instanceType，走平台默认（最便宜档）
-      lite: ""
-      default: "standard"
-      plus: "plus"
+    # 平台档位：本系统 priority_type → RH instanceType，并记录内部成本价。
+    # cost_per_second_usd 按 RH 人民币小时价折算：CNY/hour ÷ 3600 ÷ USD_CNY。
+    priority_tiers:
+      lite:
+        # 空字符串：请求体不传 instanceType，走平台默认（最便宜档）
+        instance_type: ""
+        cost_per_second_usd: "0.000016332"
+      default:
+        # 内部 `default`（标准）对应 RH 的 standard 档。
+        instance_type: "standard"
+        cost_per_second_usd: "0.000163317"
+      plus:
+        instance_type: "plus"
+        cost_per_second_usd: "0.000244976"

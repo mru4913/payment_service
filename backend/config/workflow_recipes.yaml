@@ -18,21 +18,39 @@ recipes:
     platform: runninghub
     workflow_id: "2054464837232668674"
     description: "AI 换脸"
+    estimated_runtime_seconds: 250
     nodes:
-      source_image:
-        node_id: "12"
+      face_image_1:
+        node_id: "45"
+        field_name: "image"
+        upload: true
+      face_image_2:
+        node_id: "46"
+        field_name: "image"
+        upload: true
+      face_image_3:
+        node_id: "47"
+        field_name: "image"
+        upload: true
+      face_image_4:
+        node_id: "48"
         field_name: "image"
         upload: true
       target_image:
-        node_id: "15"
+        node_id: "70"
         field_name: "image"
         upload: true
+      restore:
+        node_id: "262"
+        field_name: "value"
+        upload: false
 
-  # 万能编辑
-  universal_edit:
+  # 去水印
+  remove_watermark:
     platform: runninghub
     workflow_id: "2054766030395854850"
-    description: "RunningHub 万能编辑"
+    description: "RunningHub 去水印"
+    estimated_runtime_seconds: 300
     nodes:
       image:
         node_id: "78"

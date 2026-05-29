@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
-from sqlalchemy import asc, delete, desc, func, select, update
+from sqlalchemy import String, and_, asc, cast, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain.task_enums import TaskStatus, ThirdPartyPlatform
@@ -57,6 +57,145 @@ class TaskRepository(BaseRepository[Task]):
         result = await self.db_session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def claim_queued_task_for_worker(
+        self,
+        task_id: uuid.UUID,
+        celery_task_id: str,
+        claimed_at: datetime,
+    ) -> bool:
+        """原子领取 queued 任务，防止重复 Celery delivery 重复提交上游。"""
+        stmt = (
+            update(Task)
+            .where(
+                Task.task_id == task_id,
+                Task.status == TaskStatus.QUEUED.value,
+                Task.celery_task_id.is_(None),
+            )
+            .values(celery_task_id=celery_task_id, celery_claimed_at=claimed_at)
+        )
+        result = await self.db_session.execute(stmt)
+        return (result.rowcount or 0) == 1
+
+    async def clear_queued_task_claim(
+        self,
+        task_id: uuid.UUID,
+        celery_task_id: str,
+    ) -> bool:
+        """释放仍处于 queued 的 worker claim，用于 SlotBusy 后重试。"""
+        stmt = (
+            update(Task)
+            .where(
+                Task.task_id == task_id,
+                Task.status == TaskStatus.QUEUED.value,
+                Task.celery_task_id == celery_task_id,
+            )
+            .values(celery_task_id=None, celery_claimed_at=None)
+        )
+        result = await self.db_session.execute(stmt)
+        return (result.rowcount or 0) == 1
+
+    async def clear_stale_queued_task_claim(
+        self,
+        task_id: uuid.UUID,
+        *,
+        stale_before: datetime,
+    ) -> bool:
+        """释放超时仍停留在 queued 的 worker claim，供 requeue 恢复。"""
+        stmt = (
+            update(Task)
+            .where(
+                Task.task_id == task_id,
+                Task.status == TaskStatus.QUEUED.value,
+                Task.celery_task_id.isnot(None),
+                Task.celery_claimed_at.isnot(None),
+                Task.celery_claimed_at <= stale_before,
+            )
+            .values(celery_task_id=None, celery_claimed_at=None)
+        )
+        result = await self.db_session.execute(stmt)
+        return (result.rowcount or 0) == 1
+
+    async def claim_enqueue_attempt(
+        self,
+        task_id: uuid.UUID,
+        *,
+        cutoff: datetime,
+        attempted_at: datetime,
+    ) -> bool:
+        """Atomically claim an enqueue attempt for a due queued task."""
+        stmt = (
+            update(Task)
+            .where(
+                Task.task_id == task_id,
+                Task.status == TaskStatus.QUEUED.value,
+                Task.celery_task_id.is_(None),
+                or_(
+                    Task.last_enqueue_attempt_at.is_(None),
+                    Task.last_enqueue_attempt_at <= cutoff,
+                ),
+            )
+            .values(
+                last_enqueue_attempt_at=attempted_at,
+                enqueue_attempt_count=Task.enqueue_attempt_count + 1,
+            )
+        )
+        result = await self.db_session.execute(stmt)
+        return (result.rowcount or 0) == 1
+
+    async def list_requeue_candidate_tasks(
+        self,
+        *,
+        cutoff: datetime,
+        claim_stale_before: datetime,
+        limit: int,
+    ) -> List[Task]:
+        """Queued tasks that are safe to enqueue/re-enqueue again."""
+        stmt = (
+            select(Task)
+            .where(
+                Task.status == TaskStatus.QUEUED.value,
+                or_(
+                    and_(
+                        Task.celery_task_id.is_(None),
+                        or_(
+                            Task.last_enqueue_attempt_at.is_(None),
+                            Task.last_enqueue_attempt_at <= cutoff,
+                        ),
+                    ),
+                    and_(
+                        Task.celery_task_id.isnot(None),
+                        Task.celery_claimed_at <= claim_stale_before,
+                    ),
+                ),
+            )
+            .order_by(asc(Task.queued_at))
+            .limit(limit)
+        )
+        result = await self.db_session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_public_task_ref(
+        self,
+        telegram_id: int,
+        task_ref: str,
+    ) -> Optional[Task]:
+        """按用户可见短编号查任务；同一用户下若歧义则取最新一条。"""
+        clean = task_ref.strip().replace("-", "").lower()
+        if len(clean) < 6 or not all(c in "0123456789abcdef" for c in clean):
+            return None
+        task_hex = func.replace(cast(Task.task_id, String), "-", "")
+        stmt = (
+            select(Task)
+            .where(
+                Task.telegram_id == telegram_id,
+                func.lower(task_hex).like(f"{clean}%"),
+            )
+            .order_by(desc(Task.queued_at))
+            .limit(1)
+        )
+        result = await self.db_session.execute(stmt)
+        return result.scalars().first()
+
     async def get_by_platform_and_upstream_task_id(
         self,
         third_party_platform: str,
@@ -90,6 +229,14 @@ class TaskRepository(BaseRepository[Task]):
         )
         result = await self.db_session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_user_tasks(self, telegram_id: int) -> int:
+        """统计用户任务数。"""
+        stmt = select(func.count()).select_from(Task).where(
+            Task.telegram_id == telegram_id
+        )
+        result = await self.db_session.execute(stmt)
+        return int(result.scalar_one())
 
     async def get_tasks_by_status(
         self,

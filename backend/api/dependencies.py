@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
 from ..database.session import get_db_read, get_db_write
-from ..services import BalanceService, PaymentService, TaskService, UserService
+from ..services import (
+    BalanceService,
+    BatchService,
+    PaymentService,
+    TaskService,
+    UserService,
+)
 
 
 # 直接数据库会话依赖
@@ -60,3 +66,13 @@ def task_service_write(db: AsyncSession = Depends(db_write)) -> TaskService:
 def task_service_read(db: AsyncSession = Depends(db_read)) -> TaskService:
     """任务服务 - 只读（查询归属校验）"""
     return TaskService(db)
+
+
+def batch_service_write(db: AsyncSession = Depends(db_write)) -> BatchService:
+    """批量任务服务 - 写入"""
+    return BatchService(db)
+
+
+def batch_service_read(db: AsyncSession = Depends(db_read)) -> BatchService:
+    """批量任务服务 - 读取"""
+    return BatchService(db)

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     secret_key: str = "your-secret-key-here"
     api_key: Optional[str] = None
+    log_level: Optional[str] = None
+    log_dir: str = "logs"
+    log_to_console: bool = True
 
     # ---- 服务及网络设置 ----
     host: str = "0.0.0.0"
@@ -63,12 +66,31 @@ class Settings(BaseSettings):
     trc20_pending_scan_batch_size: int = 200
     trc20_pending_scan_max_batches: int = 100
 
+    # ---- Plisio invoice 支付设置（默认充值路径；无公网时靠 worker_poll 轮询）----
+    plisio_enabled: bool = False
+    plisio_api_key: Optional[str] = None
+    plisio_base_url: str = "https://api.plisio.net/api/v1"
+    plisio_recharge_currency: str = "USDT_TRX"
+    plisio_invoice_expire_minutes: int = 15
+
+    # ---- 支付轮询（Plisio invoice，无公网 callback 时主路径）----
+    payment_poll_enabled: bool = False
+    payment_poll_interval_sec: int = 30
+    payment_poll_batch_size: int = 50
+
     # ---- 汇率及其他 ----
     exchange_rate_api_key: Optional[str] = None
 
     # ---- Celery Worker 设置 ----
     celery_broker_url: Optional[str] = None
     celery_result_backend: Optional[str] = None
+
+    # ---- Compute queued task recovery ----
+    compute_requeue_enabled: bool = True
+    compute_requeue_interval_sec: int = 30
+    compute_requeue_batch_size: int = 100
+    compute_requeue_min_age_sec: int = 60
+    compute_worker_claim_stale_sec: int = 300
 
     # ---- RunningHub 无 Webhook：轮询终态（Celery Beat + maintenance 队列）----
     poll_enabled: bool = False
@@ -81,13 +103,22 @@ class Settings(BaseSettings):
     # ---- 本地文件存储（临时中转，定期清理）----
     upload_dir: str = "data/uploads"
     upload_retain_days: int = 3
+    upload_max_bytes: int = 10 * 1024 * 1024
+
+    # ---- Batch archive processing ----
+    batch_result_dir: str = "data/batches"
+    batch_archive_max_bytes: int = 100 * 1024 * 1024
+    batch_archive_max_items: int = 20
+    batch_archive_max_unpacked_bytes: int = 300 * 1024 * 1024
+    batch_telegram_document_max_bytes: int = 50 * 1024 * 1024
+    batch_packaging_claim_timeout_sec: int = 3600
 
     # ---- RunningHub ----
     runninghub_api_key: Optional[str] = None
     runninghub_base_url: str = "https://www.runninghub.cn"
     runninghub_webhook_public_base_url: Optional[str] = None
 
-    # 算力「创建运行」提交前并发槽（Redis；见 documents/04 §7.5）
+    # 算力「创建运行」提交前并发槽
     slot_redis_url: Optional[str] = None
     slot_max_concurrent_global: int = 32
     slot_max_concurrent_per_user: int = 6

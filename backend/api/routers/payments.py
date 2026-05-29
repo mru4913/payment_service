@@ -92,22 +92,19 @@ async def create_payment(
             "order_timeout_minutes": settings.trc20_order_timeout_minutes,
         }
 
-    payment = await payment_service.create_payment(
-        telegram_id=telegram_id,
-        amount_usd=amount_usd,
-        payment_method=payment_method,
-        description=description,
-    )
+    if payment_method == "plisio_invoice":
+        payment, err = await payment_service.create_plisio_invoice_payment(
+            telegram_id=telegram_id,
+            amount_usd=amount_usd,
+            description=description,
+        )
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        if payment is None:
+            raise HTTPException(status_code=500, detail="Plisio 创建结果异常")
+        return _payment_response(payment)
 
-    return {
-        "payment_id": str(payment.payment_id),
-        "telegram_id": payment.telegram_id,
-        "amount_usd": payment.amount_usd,
-        "payment_method": payment.payment_method,
-        "status": payment.status,
-        "description": payment.description,
-        "created_at": payment.created_at,
-    }
+    raise HTTPException(status_code=400, detail="不支持的支付方式")
 
 
 # 静态 GET 须在 /{payment_id} 之前，否则 pending、status 会被当成 UUID
@@ -135,7 +132,10 @@ async def get_pending_payments(
                 "telegram_id": p.telegram_id,
                 "amount_usd": p.amount_usd,
                 "payment_method": p.payment_method,
+                "status": p.status,
+                "external_payment_id": p.external_payment_id,
                 "description": p.description,
+                "metadata": p.payment_metadata,
                 "created_at": p.created_at,
             }
             for p in payments
@@ -214,6 +214,22 @@ async def get_user_payments(
     }
 
 
+def _payment_response(payment) -> dict[str, Any]:
+    return {
+        "payment_id": str(payment.payment_id),
+        "telegram_id": payment.telegram_id,
+        "amount_usd": payment.amount_usd,
+        "payment_method": payment.payment_method,
+        "status": payment.status,
+        "external_payment_id": payment.external_payment_id,
+        "description": payment.description,
+        "metadata": payment.payment_metadata,
+        "created_at": payment.created_at,
+        "updated_at": payment.updated_at,
+        "completed_at": payment.completed_at,
+    }
+
+
 @router.get("/{payment_id}")
 async def get_payment(
     payment_id: str, payment_service: PaymentService = Depends(payment_service_read)
@@ -244,18 +260,9 @@ async def confirm_payment(
     external_payment_id: str,
     payment_service: PaymentService = Depends(payment_service_write),
 ):
-    """确认支付完成"""
-    payment = await payment_service.confirm_payment(payment_id, external_payment_id)
-    if not payment:
-        raise HTTPException(status_code=404, detail="支付记录不存在或状态不允许确认")
-
-    return {
-        "payment_id": str(payment.payment_id),
-        "status": payment.status,
-        "external_payment_id": payment.external_payment_id,
-        "completed_at": payment.completed_at,
-        "message": "支付已确认完成",
-    }
+    """手动确认支付已禁用；支付只能由 provider poll/callback 入账。"""
+    _ = payment_id, external_payment_id, payment_service
+    raise HTTPException(status_code=403, detail="手动确认支付已禁用")
 
 
 @router.put("/{payment_id}/cancel")
@@ -304,15 +311,6 @@ async def process_refund(
     refund_amount: Optional[Decimal] = None,
     payment_service: PaymentService = Depends(payment_service_write),
 ):
-    """处理退款"""
-    refund_payment = await payment_service.process_refund(payment_id, refund_amount)
-    if not refund_payment:
-        raise HTTPException(status_code=400, detail="退款处理失败")
-
-    return {
-        "original_payment_id": payment_id,
-        "refund_payment_id": str(refund_payment.payment_id),
-        "refund_amount_usd": abs(refund_payment.amount_usd),
-        "status": "completed",
-        "message": "退款已处理",
-    }
+    """HTTP 退款入口已禁用；退款需走独立人工流程。"""
+    _ = payment_id, refund_amount, payment_service
+    raise HTTPException(status_code=403, detail="HTTP 退款入口已禁用")

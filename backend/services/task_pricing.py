@@ -6,12 +6,12 @@
 计费策略：
 - 仅 succeeded 任务扣费；failed / cancelled 计 0 并释放冻结。
 - 上游耗时字段优先；缺失时回退本地 started_at → completed_at。
-- 价格由 backend/config/pricing_table.yaml 按 task_type + priority_type 配置。
+- 客户标价由 backend/config/tier_platform_catalog.yaml 的 priority_tiers 配置。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 from pathlib import Path
@@ -19,9 +19,19 @@ from typing import Any
 
 import yaml
 
+from common.compute_catalog import (
+    DEFAULT_TIER_CATALOG_PATH,
+    DEFAULT_WORKFLOW_RECIPES_PATH,
+    ComputeCatalogError,
+    clear_compute_catalog_cache,
+    estimate_hold_amount,
+    load_priority_tiers,
+    load_workflow_estimates,
+)
+
 from ..domain.task_enums import TaskStatus
 
-_PRICING_PATH = Path(__file__).resolve().parents[1] / "config" / "pricing_table.yaml"
+_PRICING_PATH = DEFAULT_TIER_CATALOG_PATH
 _USD_QUANT = Decimal("0.000001")
 _DURATION_KEYS = (
     "taskCostTime",
@@ -53,6 +63,7 @@ class PriceEntry:
 class PricingTable:
     pricing_version: str
     prices: dict[str, dict[str, PriceEntry]]
+    tiers: dict[str, PriceEntry] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -67,22 +78,46 @@ def clear_pricing_cache() -> None:
     """测试或热更新配置后清空缓存。"""
     global _pricing_cache  # noqa: PLW0603
     _pricing_cache = None
+    clear_compute_catalog_cache()
 
 
 def load_pricing_table(path: Path = _PRICING_PATH) -> PricingTable:
-    """加载按 task_type + priority_type 计费表。"""
+    """加载按 priority_type 计费表。
+
+    当前生产配置以 ``tier_platform_catalog.yaml`` 中的 ``priority_tiers`` 为准；
+    ``prices`` 分支仅保留给单元测试注入精确价格矩阵。
+    """
     with path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):
-        raise TaskPricingError("pricing_table.yaml root must be a mapping")
+        raise TaskPricingError(f"{path.name} root must be a mapping")
 
     version = str(raw.get("pricing_version") or raw.get("version") or "").strip()
     if not version:
-        raise TaskPricingError("pricing_table.yaml missing pricing_version")
+        raise TaskPricingError(f"{path.name} missing pricing_version")
+
+    if isinstance(raw.get("priority_tiers"), dict):
+        try:
+            tier_specs = load_priority_tiers(path)
+            estimates = load_workflow_estimates(DEFAULT_WORKFLOW_RECIPES_PATH)
+        except ComputeCatalogError as exc:
+            raise TaskPricingError(str(exc)) from exc
+        tiers = {
+            key: PriceEntry(
+                price_per_second_usd=tier.price_per_second_usd,
+                pricing_version=tier.pricing_version,
+            )
+            for key, tier in tier_specs.items()
+        }
+        prices = {
+            task_type: dict(tiers)
+            for task_type in estimates
+        }
+        return PricingTable(pricing_version=version, prices=prices, tiers=tiers)
 
     raw_prices = raw.get("prices")
     if not isinstance(raw_prices, dict):
-        raise TaskPricingError("pricing_table.yaml missing prices")
+        raise TaskPricingError(f"{path.name} missing priority_tiers or prices")
 
     prices: dict[str, dict[str, PriceEntry]] = {}
     for task_type, raw_tiers in raw_prices.items():
@@ -127,12 +162,22 @@ def get_price_entry(task_type: str, priority_type: str) -> PriceEntry:
     table = get_pricing_table()
     entry = table.prices.get(task_type, {}).get(priority_type)
     if entry is None:
+        entry = table.tiers.get(priority_type)
+    if entry is None:
         raise TaskPricingError(
             "missing enabled price for "
             f"task_type={task_type} priority_type={priority_type}",
             "pricing_not_found",
         )
     return entry
+
+
+def estimate_task_hold(task_type: str, priority_type: str) -> Decimal:
+    """按 workflow 预计秒数与档位客户标价秒单价计算预冻结金额。"""
+    try:
+        return estimate_hold_amount(task_type, priority_type)
+    except ComputeCatalogError as exc:
+        raise TaskPricingError(str(exc), "pricing_not_found") from exc
 
 
 def _decimal_from_any(value: Any) -> Decimal | None:

@@ -16,9 +16,10 @@ from .routers import (
     payments_router,
     payments_public_router,
     balance_router,
+    batches_router,
     health_router,
+    media_router,
     tasks_router,
-    webhooks_router,
 )
 from .middleware import (
     setup_cors_middleware,
@@ -61,11 +62,15 @@ def create_api_app() -> FastAPI:
     # 支付网关回调（无 API Key，由平台签名验真）
     app.include_router(payments_public_router)
 
-    # RunningHub Webhook 回调（无 API Key，path 含 task_id 校验归属）
-    app.include_router(webhooks_router)
-
     # 注册路由（需鉴权）
-    protected = [users_router, payments_router, balance_router, tasks_router]
+    protected = [
+        users_router,
+        payments_router,
+        balance_router,
+        batches_router,
+        tasks_router,
+        media_router,
+    ]
     for r in protected:
         app.include_router(r, dependencies=[Depends(verify_api_key)])
 

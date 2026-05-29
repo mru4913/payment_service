@@ -10,9 +10,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-from frontend.bot.bot import build_telegram_app
-from frontend.runner import start_bot_polling, stop_bot_polling
-
 from .api.main import create_api_app
 from .database.session import create_tables
 from .globals import logger, settings
@@ -39,17 +36,7 @@ async def lifespan(app: FastAPI):
         monitor = TRC20Monitor(settings)
         monitor_task = asyncio.create_task(monitor.start())
 
-    # 启动 Telegram Bot (非阻塞 polling)
-    bot_app = None
-    if settings.telegram_bot_token:
-        bot_app = build_telegram_app()
-        await start_bot_polling(bot_app)
-
     yield
-
-    # 关闭 Telegram Bot
-    if bot_app:
-        await stop_bot_polling(bot_app)
 
     # 关闭监控任务
     if monitor:

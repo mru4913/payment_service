@@ -15,8 +15,8 @@ settings = Settings()
 # 配置日志系统
 logger = DailyRotatingLogger.setup_logging(
     name="eshow_backend",
-    log_dir="logs",
-    log_level="DEBUG" if settings.debug else "INFO",
+    log_dir=settings.log_dir,
+    log_level=settings.log_level or ("DEBUG" if settings.debug else "INFO"),
     max_days=15,
-    console=True,
+    console=settings.log_to_console,
 )

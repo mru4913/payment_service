@@ -8,7 +8,7 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Optional, List, Dict, Tuple
+from typing import Literal, Optional, List, Dict, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base_service import BaseService
@@ -16,6 +16,7 @@ from ..domain.balance_transaction_types import BalanceTransactionType
 from ..database.repositories import PaymentRepository
 from ..database.models import Payment
 from ..payments.base import PaymentRequest
+from ..payments.plisio import PlisioProvider
 from ..payments.trc20_usdt import TRC20UsdtProvider
 from ..services.user_service import UserService
 from ..globals import logger
@@ -84,6 +85,39 @@ class PaymentService(BaseService):
         )
         return payment, None
 
+    async def create_plisio_invoice_payment(
+        self,
+        telegram_id: int,
+        amount_usd: Decimal,
+        description: str = "",
+    ) -> tuple[Optional[Payment], Optional[str]]:
+        """创建 Plisio invoice；失败不写入本地 pending 订单。"""
+        await self.user_service.get_or_create_user(telegram_id)
+        payment_id = uuid.uuid4()
+        provider = PlisioProvider()
+        request = PaymentRequest(
+            payment_id=str(payment_id),
+            amount_usd=amount_usd,
+            description=description or "Eshow recharge",
+            callback_url="",
+        )
+        result = await provider.create_payment(request)
+        await provider.close()
+        if not result.success or not result.metadata or not result.external_payment_id:
+            return None, result.error_message or "Plisio 订单创建失败"
+
+        payment = Payment(
+            payment_id=payment_id,
+            telegram_id=telegram_id,
+            amount_usd=amount_usd,
+            payment_method="plisio_invoice",
+            status="pending",
+            external_payment_id=result.external_payment_id,
+            description=description,
+            payment_metadata=dict(result.metadata),
+        )
+        return await self.payment_repo.create(payment), None
+
     async def get_payment(self, payment_id: str) -> Optional[Payment]:
         """根据支付ID获取支付详情"""
         try:
@@ -128,11 +162,59 @@ class PaymentService(BaseService):
             },
         )
 
+    def _paid_amount_matches(
+        self,
+        payment: Payment,
+        paid_amount: Decimal | str | int | float | None,
+        amount_policy: Literal["unchecked", "at_least", "exact"],
+    ) -> bool:
+        if amount_policy == "unchecked":
+            return True
+        if paid_amount is None:
+            logger.warning(
+                "支付确认缺少平台实付金额: payment_id=%s policy=%s",
+                payment.payment_id,
+                amount_policy,
+            )
+            return False
+        try:
+            paid = Decimal(str(paid_amount))
+        except (InvalidOperation, ValueError):
+            logger.warning(
+                "支付确认平台实付金额格式无效: payment_id=%s paid_amount=%s",
+                payment.payment_id,
+                paid_amount,
+            )
+            return False
+        if amount_policy == "at_least":
+            ok = paid >= payment.amount_usd
+        else:
+            ok = paid == payment.amount_usd
+        if not ok:
+            logger.warning(
+                "支付确认金额不匹配: payment_id=%s expected=%s paid=%s policy=%s",
+                payment.payment_id,
+                payment.amount_usd,
+                paid,
+                amount_policy,
+            )
+        return ok
+
     async def confirm_payment(
-        self, payment_id: str, external_payment_id: str
+        self,
+        payment_id: str,
+        external_payment_id: str,
+        *,
+        paid_amount: Decimal | str | int | float | None = None,
+        amount_policy: Literal["unchecked", "at_least", "exact"] = "unchecked",
     ) -> Optional[Payment]:
         """确认支付完成并更新用户余额（与调用方同一事务）。"""
-        payment = await self.get_payment(payment_id)
+        try:
+            payment_uuid = uuid.UUID(payment_id)
+        except ValueError:
+            return None
+
+        payment = await self.payment_repo.get_by_payment_id(payment_uuid)
         if not payment:
             return None
         if payment.status == "completed":
@@ -145,29 +227,48 @@ class PaymentService(BaseService):
             return None
         if payment.status != "pending":
             return None
-
-        payment.status = "completed"
-        payment.external_payment_id = external_payment_id
-        payment.completed_at = datetime.now(timezone.utc)
-
-        await self.payment_repo.update(
-            payment,
-            {
-                "status": "completed",
-                "external_payment_id": external_payment_id,
-                "completed_at": payment.completed_at,
-            },
+        if not self._paid_amount_matches(payment, paid_amount, amount_policy):
+            return None
+        duplicate = await self.payment_repo.get_by_method_external_id(
+            payment.payment_method,
+            external_payment_id,
         )
+        if duplicate and duplicate.payment_id != payment.payment_id:
+            logger.warning(
+                "外部支付单号已绑定其它订单: payment_id=%s duplicate_payment_id=%s "
+                "payment_method=%s external_payment_id=%s",
+                payment.payment_id,
+                duplicate.payment_id,
+                payment.payment_method,
+                external_payment_id,
+            )
+            return None
+
+        completed = await self.payment_repo.confirm_pending_payment(
+            payment_uuid,
+            external_payment_id=external_payment_id,
+            completed_at=datetime.now(timezone.utc),
+        )
+        if completed is None:
+            current = await self.payment_repo.get_by_payment_id(payment_uuid)
+            if current and current.status == "completed":
+                if current.external_payment_id == external_payment_id:
+                    return current
+                logger.warning(
+                    "订单并发完成但 external_payment_id 不一致: payment_id=%s",
+                    payment_id,
+                )
+            return None
 
         await self.user_service.update_balance(
-            payment.telegram_id,
-            payment.amount_usd,
+            completed.telegram_id,
+            completed.amount_usd,
             BalanceTransactionType.DEPOSIT,
-            payment.payment_id,
-            f"Payment via {payment.payment_method}",
+            completed.payment_id,
+            f"Payment via {completed.payment_method}",
         )
 
-        return payment
+        return completed
 
     async def cancel_payment(self, payment_id: str) -> Optional[Payment]:
         """取消支付（仅 pending；已为 cancelled 则幂等返回）。"""
@@ -229,6 +330,19 @@ class PaymentService(BaseService):
     ) -> List[Payment]:
         """TRC20 pending FIFO 分页（keyset）。"""
         return await self.payment_repo.get_pending_trc20_usdt_keyset(cursor, limit)
+
+    async def get_pending_payments_by_method_keyset(
+        self,
+        payment_method: str,
+        cursor: Optional[Tuple[datetime, uuid.UUID]],
+        limit: int,
+    ) -> List[Payment]:
+        """指定支付方式的 pending FIFO 分页。"""
+        return await self.payment_repo.get_pending_by_method_keyset(
+            payment_method,
+            cursor,
+            limit,
+        )
 
     async def get_payments_by_status(
         self, status: str, skip: int = 0, limit: int = 100

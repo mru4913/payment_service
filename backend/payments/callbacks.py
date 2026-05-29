@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from decimal import Decimal, InvalidOperation
 from typing import Dict, Any, Optional
 
 from fastapi import HTTPException
@@ -120,6 +121,7 @@ class PaymentCallbackHandler:
         payment_id = payment_info.get("payment_id")
         external_id = payment_info.get("external_payment_id")
         status = payment_info.get("status")
+        amount = payment_info.get("amount")
 
         if not payment_id or not status:
             logger.warning(f"回调数据缺少必要字段: {payment_info}")
@@ -134,7 +136,21 @@ class PaymentCallbackHandler:
                 svc = PaymentService(session)
 
                 if status == "completed":
-                    payment = await svc.confirm_payment(payment_id, external_id)
+                    try:
+                        paid_amount = Decimal(str(amount))
+                    except (InvalidOperation, TypeError, ValueError):
+                        logger.warning(
+                            "支付成功回调金额无效，跳过确认: payment_id=%s amount=%s",
+                            payment_id,
+                            amount,
+                        )
+                        return
+                    payment = await svc.confirm_payment(
+                        payment_id,
+                        external_id,
+                        paid_amount=paid_amount,
+                        amount_policy="exact",
+                    )
                     if payment:
                         logger.info(
                             f"支付确认成功: payment_id={payment_id}, "

@@ -8,6 +8,8 @@ from .payment import Payment
 from .balance_transaction import BalanceTransaction
 from .task import Task
 from .task_balance_hold import TaskBalanceHold
+from .batch_job import BatchJob
+from .batch_item import BatchItem
 
 __all__ = [
     "Base",
@@ -16,4 +18,6 @@ __all__ = [
     "BalanceTransaction",
     "Task",
     "TaskBalanceHold",
+    "BatchJob",
+    "BatchItem",
 ]

@@ -62,7 +62,7 @@ class UserService(BaseService):
         description: str = "",
     ) -> Optional[User]:
         """更新用户余额并记录交易（与调用方同一事务）。"""
-        user = await self.user_repo.get_by_telegram_id(telegram_id)
+        user = await self.user_repo.get_by_telegram_id_for_update(telegram_id)
         if not user:
             return None
 

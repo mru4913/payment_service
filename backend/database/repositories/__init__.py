@@ -8,8 +8,11 @@ from .payment_repository import PaymentRepository
 from .balance_transaction_repository import BalanceTransactionRepository
 from .task_repository import TaskRepository
 from .task_balance_hold_repository import TaskBalanceHoldRepository
+from .batch_repository import BatchItemRepository, BatchJobRepository
 
 __all__ = [
+    "BatchItemRepository",
+    "BatchJobRepository",
     "BaseRepository",
     "UserRepository",
     "PaymentRepository",
