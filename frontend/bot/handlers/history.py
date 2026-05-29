@@ -35,7 +35,7 @@ _TYPE_ICONS = {
 
 async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理 /history 命令"""
-    await _show_history(update, page=1)
+    await _show_history(update, page=1, edit=bool(update.callback_query))
 
 
 async def history_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,10 +78,17 @@ async def _show_history(update: Update, page: int = 1, edit: bool = False):
     page_txs = list(data.get("transactions") or [])
     if total == 0:
         text = tr("history.title", lang) + "\n\n" + tr("history.empty", lang)
+        keyboard = pagination_keyboard(
+            1,
+            1,
+            "history_page",
+            lang,
+            back_callback="dashboard:my" if edit else None,
+        )
         if edit and update.callback_query:
-            await update.callback_query.edit_message_text(text)
+            await update.callback_query.edit_message_text(text, reply_markup=keyboard)
         elif update.effective_message:
-            await update.effective_message.reply_text(text)
+            await update.effective_message.reply_text(text, reply_markup=keyboard)
         return
 
     total_pages = max(1, math.ceil(total / PER_PAGE))
@@ -118,7 +125,13 @@ async def _show_history(update: Update, page: int = 1, edit: bool = False):
     lines.append(tr("history.page", lang, current=display_page, total=total_pages))
 
     text = "\n".join(lines)
-    keyboard = pagination_keyboard(display_page, total_pages, "history_page", lang)
+    keyboard = pagination_keyboard(
+        display_page,
+        total_pages,
+        "history_page",
+        lang,
+        back_callback="dashboard:my" if edit else None,
+    )
 
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=keyboard)

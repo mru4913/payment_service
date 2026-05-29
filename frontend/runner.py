@@ -5,20 +5,21 @@
 Bot 启动入口
 
 独立运行：python -m frontend.runner
-或由 FastAPI lifespan 以非阻塞方式启动。
 """
 
 import logging
 
 from frontend.bot.bot import build_telegram_app
+from frontend.core.base_bot import sync_bot_commands
 from frontend.integrations import reset_backend_client
 
 logger = logging.getLogger("frontend.runner")
 
 
 async def start_bot_polling(app):
-    """非阻塞启动 Bot polling（用于 FastAPI lifespan 集成）。"""
+    """非阻塞启动 Bot polling（供脚本或测试显式调用）。"""
     await app.initialize()
+    await sync_bot_commands(app)
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
     logger.info("Telegram Bot polling 已启动")

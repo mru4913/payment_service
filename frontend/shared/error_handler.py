@@ -10,6 +10,8 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from frontend.core.i18n import get_user_lang_from_telegram, t
+
 logger = logging.getLogger("frontend.error_handler")
 
 
@@ -19,6 +21,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
     if isinstance(update, Update) and update.effective_message:
         try:
-            await update.effective_message.reply_text("❌ 系统异常，请稍后重试。")
+            lang = get_user_lang_from_telegram(update.effective_user)
+            await update.effective_message.reply_text(t("errors.unhandled", lang=lang))
         except Exception:
             pass

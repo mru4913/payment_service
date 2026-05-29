@@ -4,18 +4,38 @@
     "registered": "您的账户已创建成功。",
     "returning": "欢迎回来，{name}！"
   },
+  "dashboard": {
+    "title": "✨ <b>Eshow（易修）</b>\n{name}，欢迎回来。",
+    "subtitle": "请选择下一步操作。",
+    "menu_hint": "👇 从下面 6 个入口开始：",
+    "account": "👤 <b>我的</b>\n账号：<code>{telegram_id}</code>\n\n💰 <b>余额</b>\n总余额：<b>{balance}</b> USD\n可用余额：{available} USD\n预授权冻结：{held} USD",
+    "price_hint": "🎭 <b>AI 换脸</b>\n普通 $0.05｜标准 $0.18｜优先 $0.35\n\n🖌 <b>去水印 / 去 Logo</b>\n普通 $0.06｜标准 $0.216｜优先 $0.42",
+    "billing_hint": "⏱ 按实际运行秒数结算；失败不扣费，费用不超过预冻结金额。",
+    "btn_my": "我的",
+    "btn_compute": "AI 换脸",
+    "btn_remove_watermark": "去水印 / 去 Logo",
+    "btn_batch": "去水印 / 去 Logo 批量处理",
+    "btn_recharge": "充值",
+    "btn_task_history": "任务历史",
+    "btn_history": "交易记录",
+    "btn_language": "语言设置",
+    "btn_help": "帮助"
+  },
   "recharge": {
-    "select_amount": "请选择充值金额（USDT）：",
+    "description": "Plisio 充值",
+    "select_amount": "请选择充值金额（USD）：",
     "custom_amount": "💬 自定义金额",
-    "enter_amount": "请输入充值金额（USDT），最小 1：",
-    "confirm": "请向以下地址转账：\n\n💰 金额：<b>{amount} USDT</b>\n🔗 网络：TRC20\n\n📋 收款地址：\n<code>{address}</code>\n\n⚠️ 请务必转账 <b>精确金额</b>，否则无法自动到账。",
+    "enter_amount": "请输入充值金额（USD），最小 1：",
+    "invoice": "💰 金额：<b>{amount} USD</b>\n🔗 币种：{currency}\n⏳ 有效期：{minutes} 分钟\n\n请点击下方按钮打开 Plisio 支付页面。到账后余额会自动更新。",
     "timeout_warning": "⏰ 请在 {minutes} 分钟内完成转账",
-    "pending_exists": "⚠️ 您有一笔未完成的充值订单（{amount} USDT），请先完成或等待超时。",
-    "success": "✅ 充值成功！{amount} USDT 已到账，当前余额 {balance} USD。",
+    "pending_invoice_exists": "⚠️ 您有一笔未完成的充值订单。\n\n💰 金额：<b>{amount} USD</b>\n🔗 币种：{currency}\n⏳ 有效期：{minutes} 分钟\n\n请继续使用下方支付链接，避免重复创建订单。",
+    "success": "✅ 充值成功！{amount} USD 已到账，当前余额 {balance} USD。",
     "cancelled": "❌ 充值订单已超时取消。",
-    "invalid_amount": "请输入有效的金额（最小 1 USDT，最大 10000 USDT）。",
+    "invalid_amount": "请输入有效的金额（最小 1 USD，最大 10000 USD）。",
     "order_created": "✅ 充值订单已创建",
-    "cancel_confirm": "订单已取消。"
+    "cancel_confirm": "订单已取消。如已完成支付，请联系人工核对。",
+    "btn_open_invoice": "打开支付页面",
+    "waiting": "⏳ 等待到账中…"
   },
   "balance": {
     "title": "💰 账户信息",
@@ -29,32 +49,92 @@
   "errors": {
     "backend_transport": "无法连接后端服务，请稍后重试或检查网络。",
     "backend_auth": "后端鉴权失败，请检查服务端 API_KEY 配置。",
-    "backend_config": "算力功能未配置：请设置 BACKEND_BASE_URL 与 API_KEY。"
+    "backend_config": "算力功能未配置：请设置 BACKEND_BASE_URL 与 API_KEY。",
+    "unhandled": "❌ 系统异常，请稍后重试。"
+  },
+  "bot_commands": {
+    "start": "打开首页",
+    "help": "帮助"
   },
   "task": {
-    "usage": "用法：/task &lt;任务ID&gt;\n示例：<code>/task 550e8400-e29b-41d4-a716-446655440000</code>",
+    "usage": "用法：/task &lt;任务编号&gt;\n示例：<code>/task 791CC7EE</code>",
     "invalid_uuid": "任务 ID 不是有效的 UUID。",
+    "invalid_ref": "任务编号格式不正确。",
     "title": "📌 任务状态",
+    "code": "任务编号：<code>{code}</code>",
     "status": "状态：<b>{status}</b>",
     "queued_at": "入队时间：{t}",
     "started_at": "开始时间：{t}",
     "completed_at": "完成时间：{t}",
-    "upstream": "上游任务 ID：<code>{id}</code>",
     "error": "错误：{msg}",
-    "not_found": "任务不存在或无权查看。"
+    "not_found": "任务不存在或无权查看。",
+    "result_caption": "✅ 任务 <code>{code}</code> 已完成，结果如下。",
+    "result_link": "✅ 任务 <code>{code}</code> 已完成：{url}"
   },
   "compute": {
-    "intro": "算力任务（换脸 face_swap）：请依次发送两张图片的 <b>HTTPS 直链</b>。\n预授权：{hold} USD，档位：{priority}。\n发送 /cancel 取消。",
-    "ask_source": "请发送 <b>源图</b> 图片 URL：",
-    "ask_target": "请发送 <b>目标图</b> 图片 URL：",
-    "invalid_url": "请输入以 http:// 或 https:// 开头的 URL。",
-    "success": "任务已创建。\n任务 ID：<code>{task_id}</code>\n状态：{status}\n（可使用 /task 查询进度）",
-    "cancelled": "已取消创建任务。"
+    "ask_faces": "AI 换脸\n\n请一次性发送 1-4 张<b>人脸参考图</b>。\n如果只有 1 张，系统会自动补齐 4 个参考位。\n\n发送 /cancel 可取消。",
+    "faces_received": "已收到人脸参考图：{count}/{max}\n\n可以继续发送，或点击下一步。",
+    "faces_full": "已收到 4 张人脸参考图，将使用前 4 张。",
+    "need_faces": "请先发送至少 1 张人脸参考图。",
+    "ask_target": "请发送 1 张<b>目标图</b>。\n目标图就是你想被换脸的图片。",
+    "target_received": "目标图已收到。\n\n点击下一步确认参数。",
+    "target_already_received": "已使用第一张目标图。如需更换，请取消任务后重新开始。",
+    "face_album_tail_ignored": "已收到这组人脸相册的后续图片，不会作为目标图使用。",
+    "need_target": "请先发送 1 张目标图。",
+    "invalid_image": "请发送图片，支持 JPEG、PNG 或 WebP。",
+    "use_buttons": "图片已就绪，请使用下面的按钮继续。",
+    "confirm": "确认生成\n\n人脸参考图：{faces} 张\n人脸修复：{restore}\n队列等级：{priority}\n预冻结：{hold} USD\n\n计费：按实际运行秒数扣费，失败不扣费。",
+    "success": "任务已提交\n\n任务编号：<code>{task_code}</code>\n状态：{status}\n队列等级：{priority}\n预冻结：{hold} USD\n\n可点击刷新状态，或从任务历史查看。",
+    "missing_inputs": "任务参数不完整，请重新开始。",
+    "cancelled": "已取消创建任务。",
+    "on": "开",
+    "off": "关",
+    "restore_on": "✨ 人脸修复：开",
+    "restore_off": "✨ 人脸修复：关",
+    "priority_lite": "🐢 普通",
+    "priority_default": "⚡ 标准",
+    "priority_plus": "🚀 优先",
+    "btn_next_target": "➡️ 下一步：上传目标图",
+    "btn_next_confirm": "➡️ 下一步：确认参数",
+    "btn_reset": "🔄 重新上传",
+    "btn_reset_target": "🔄 重新上传目标图",
+    "btn_back_faces": "↩️ 返回人脸图",
+    "btn_start_generate": "🎬 开始生成",
+    "btn_my_tasks": "我的任务",
+    "btn_cancel_task": "❌ 取消任务",
+    "btn_new_task": "🎭 再做一张"
+  },
+  "remove_watermark": {
+    "ask_image": "🖌 <b>去水印 / 去 Logo</b>\n\n请发送 1 张需要处理的图片。\n系统会自动移除画面里的水印、Logo、文字覆盖或半透明标记。\n\n发送 /cancel 可取消。",
+    "image_received": "✅ 图片已收到。\n\n点击下一步确认参数。",
+    "image_already_received": "已使用第一张图片。如需更换，请取消任务后重新开始。",
+    "need_image": "请先发送 1 张图片。",
+    "confirm": "确认生成\n\n任务类型：去水印 / 去 Logo\n队列等级：{priority}\n预冻结：{hold} USD\n\n计费：按实际运行秒数扣费，失败不扣费。",
+    "success": "任务已提交\n\n任务编号：<code>{task_code}</code>\n状态：{status}\n队列等级：{priority}\n预冻结：{hold} USD\n\n可点击刷新状态，或从任务历史查看。",
+    "missing_inputs": "任务参数不完整，请重新开始。",
+    "btn_next_confirm": "➡️ 下一步：确认参数",
+    "btn_new_task": "🖌 再做一张"
+  },
+  "batch": {
+    "choose": "📦 <b>批量处理</b>\n\n请选择批量能力。",
+    "ask_archive": "🖌 <b>批量去水印 / 去 Logo</b>\n\n请上传 zip、tar 或 tar.gz 压缩包。\n系统会保留原目录结构，处理完成后打包回传。\n\n发送 /cancel 可取消。",
+    "invalid_archive": "请上传有效的 zip、tar 或 tar.gz 压缩包，最多 20 张 JPEG/PNG/WebP 图片。",
+    "confirm": "确认批量处理\n\n文件：<code>{filename}</code>\n图片数量：{count} 张\n队列等级：{priority}\n预冻结：{hold} USD\n\n计费：每张图按实际运行秒数扣费，失败不扣费。结果会按原目录打包返回。",
+    "success": "批量任务已提交\n\n批次编号：<code>{batch_code}</code>\n图片数量：{count} 张\n状态：{status}\n队列等级：{priority}\n预冻结：{hold} USD\n\n处理完成后会自动发送结果压缩包。",
+    "status": "📦 <b>批量任务状态</b>\n\n批次编号：<code>{batch_code}</code>\n状态：<b>{status}</b>\n总数：{total}\n成功：{success}\n失败：{failed}\n创建时间：{created}\n完成时间：{completed}",
+    "missing_archive": "压缩包信息已失效，请重新开始。",
+    "not_found": "批次不存在或无权查看。",
+    "history_title": "📦 批量历史",
+    "history_empty": "暂无批量任务。",
+    "history_entry": "<code>{code}</code> | {time} | {success}/{total} 成功 | 失败 {failed} | {status}",
+    "btn_remove_watermark": "🖌 去水印 / 去 Logo",
+    "btn_start": "🎬 开始批量处理",
+    "btn_history": "批量历史"
   },
   "history": {
     "title": "📋 交易记录",
     "empty": "暂无交易记录。",
-    "entry": "{icon} {type_name} | {amount} USD | {time}",
+    "entry": "{time} | {icon} {type_name} | {amount} USD",
     "page": "第 {current}/{total} 页",
     "no_more": "没有更多记录了。",
     "type_deposit": "充值",
@@ -64,19 +144,30 @@
     "type_hold": "预授权冻结",
     "type_hold_release": "解冻",
     "type_consumption": "算力消费",
-    "prev": "⬅️ 上一页",
-    "next": "下一页 ➡️"
+    "prev": "《",
+    "next": "》"
+  },
+  "task_history": {
+    "title": "🗂 任务历史",
+    "empty": "暂无任务记录。",
+    "entry": "<code>{code}</code> | {time} | {type} | {status}",
+    "page": "第 {current}/{total} 页"
+  },
+  "task_type": {
+    "face_swap": "AI 换脸",
+    "remove_watermark": "去水印 / 去 Logo"
   },
   "language": {
     "select": "🌐 请选择语言：",
-    "changed": "✅ 语言已切换为：{lang}"
+    "changed": "✅ 语言已切换为：{language}"
   },
   "common": {
     "error": "❌ 操作失败，请稍后重试。",
     "help_title": "📖 可用命令",
-    "help_text": "/start - 开始使用\n/recharge - 充值 USDT\n/balance - 查询余额\n/history - 交易记录\n/compute - 创建算力任务（换脸）\n/task - 查询任务状态\n/lang - 切换语言\n/help - 帮助信息",
+    "help_text": "/start - 打开首页\n/help - 帮助信息\n\n请使用首页按钮进入：我的、AI 换脸、去水印 / 去 Logo、批量处理、充值、帮助。\n\n任务历史、交易记录和语言设置在“我的”里。",
     "unknown": "未知命令，请输入 /help 查看帮助。",
     "btn_check_status": "🔍 查询状态",
-    "btn_cancel": "❌ 取消订单"
+    "btn_cancel": "❌ 取消订单",
+    "btn_back": "返回"
   }
 }

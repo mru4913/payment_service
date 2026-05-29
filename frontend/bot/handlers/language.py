@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 
 from frontend.core.i18n import get_user_lang, lang_display_name, SUPPORTED_LANGS
 from frontend.core.utils import tr
-from frontend.bot.keyboards import language_keyboard
+from frontend.bot.keyboards import account_back_keyboard, language_keyboard
 from frontend.integrations import BackendAPIError, get_backend_client
 
 
@@ -35,7 +35,15 @@ async def lang_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     lang = get_user_lang(prefs)
-    await msg.reply_text(tr("language.select", lang), reply_markup=language_keyboard())
+    if update.callback_query:
+        keyboard = language_keyboard(lang, back_callback="dashboard:my")
+        await update.callback_query.edit_message_text(
+            tr("language.select", lang),
+            reply_markup=keyboard,
+        )
+    else:
+        keyboard = language_keyboard(lang)
+        await msg.reply_text(tr("language.select", lang), reply_markup=keyboard)
 
 
 async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,4 +79,7 @@ async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     display = lang_display_name(new_lang)
-    await query.edit_message_text(tr("language.changed", new_lang, lang=display))
+    await query.edit_message_text(
+        tr("language.changed", new_lang, language=display),
+        reply_markup=account_back_keyboard(new_lang),
+    )

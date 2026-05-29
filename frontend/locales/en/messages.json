@@ -4,18 +4,38 @@
     "registered": "Your account has been created.",
     "returning": "Welcome back, {name}!"
   },
+  "dashboard": {
+    "title": "✨ <b>Eshow</b>\nWelcome back, {name}.",
+    "subtitle": "Choose what you want to do next.",
+    "menu_hint": "👇 Start with one of these 6 actions:",
+    "account": "👤 <b>My Account</b>\nAccount: <code>{telegram_id}</code>\n\n💰 <b>Balance</b>\nTotal: <b>{balance}</b> USD\nAvailable: {available} USD\nPre-auth hold: {held} USD",
+    "price_hint": "🎭 <b>AI Face Swap</b>\nNormal $0.05 | Standard $0.18 | Priority $0.35\n\n🖌 <b>Remove Watermark / Logo</b>\nNormal $0.06 | Standard $0.216 | Priority $0.42",
+    "billing_hint": "⏱ Charged by actual runtime seconds. Failed tasks are not charged and fees never exceed the pre-auth hold.",
+    "btn_my": "My",
+    "btn_compute": "AI Face Swap",
+    "btn_remove_watermark": "Remove Watermark / Logo",
+    "btn_batch": "Batch Remove Watermark / Logo",
+    "btn_recharge": "Top up",
+    "btn_task_history": "Task history",
+    "btn_history": "History",
+    "btn_language": "Language settings",
+    "btn_help": "Help"
+  },
   "recharge": {
-    "select_amount": "Select top-up amount (USDT):",
+    "description": "Plisio top-up",
+    "select_amount": "Select top-up amount (USD):",
     "custom_amount": "💬 Custom amount",
-    "enter_amount": "Enter top-up amount (USDT), minimum 1:",
-    "confirm": "Please transfer to the following address:\n\n💰 Amount: <b>{amount} USDT</b>\n🔗 Network: TRC20\n\n📋 Receiving address:\n<code>{address}</code>\n\n⚠️ Please transfer the <b>exact amount</b>, otherwise auto-confirmation will fail.",
+    "enter_amount": "Enter top-up amount (USD), minimum 1:",
+    "invoice": "💰 Amount: <b>{amount} USD</b>\n🔗 Currency: {currency}\n⏳ Expires in: {minutes} minutes\n\nOpen the Plisio payment page below. Your balance will update automatically after payment is confirmed.",
     "timeout_warning": "⏰ Please complete the transfer within {minutes} minutes",
-    "pending_exists": "⚠️ You have a pending top-up order ({amount} USDT). Please complete it or wait for timeout.",
-    "success": "✅ Top-up successful! {amount} USDT received. Current balance: {balance} USD.",
+    "pending_invoice_exists": "⚠️ You have a pending top-up order.\n\n💰 Amount: <b>{amount} USD</b>\n🔗 Currency: {currency}\n⏳ Expires in: {minutes} minutes\n\nPlease keep using the payment link below to avoid duplicate orders.",
+    "success": "✅ Top-up successful! {amount} USD received. Current balance: {balance} USD.",
     "cancelled": "❌ Top-up order has timed out and been cancelled.",
-    "invalid_amount": "Please enter a valid amount (min 1 USDT, max 10000 USDT).",
+    "invalid_amount": "Please enter a valid amount (min 1 USD, max 10000 USD).",
     "order_created": "✅ Top-up order created",
-    "cancel_confirm": "Order cancelled."
+    "cancel_confirm": "Order cancelled. If you have already paid, please contact support for manual review.",
+    "btn_open_invoice": "Open payment page",
+    "waiting": "⏳ Waiting for payment…"
   },
   "balance": {
     "title": "💰 Account Info",
@@ -29,32 +49,92 @@
   "errors": {
     "backend_transport": "Cannot reach backend. Please try again later.",
     "backend_auth": "Backend auth failed. Check API_KEY configuration.",
-    "backend_config": "Compute is not configured: set BACKEND_BASE_URL and API_KEY."
+    "backend_config": "Compute is not configured: set BACKEND_BASE_URL and API_KEY.",
+    "unhandled": "❌ System error. Please try again later."
+  },
+  "bot_commands": {
+    "start": "Open dashboard",
+    "help": "Help"
   },
   "task": {
-    "usage": "Usage: /task followed by task UUID.\nExample: /task 550e8400-e29b-41d4-a716-446655440000",
+    "usage": "Usage: /task followed by task code.\nExample: <code>/task 791CC7EE</code>",
     "invalid_uuid": "Task ID is not a valid UUID.",
+    "invalid_ref": "Task code format is invalid.",
     "title": "📌 Task status",
+    "code": "Task code: <code>{code}</code>",
     "status": "Status: <b>{status}</b>",
     "queued_at": "Queued at: {t}",
     "started_at": "Started at: {t}",
     "completed_at": "Completed at: {t}",
-    "upstream": "Upstream ID: <code>{id}</code>",
     "error": "Error: {msg}",
-    "not_found": "Task not found or access denied."
+    "not_found": "Task not found or access denied.",
+    "result_caption": "✅ Task <code>{code}</code> is complete. Result below.",
+    "result_link": "✅ Task <code>{code}</code> is complete: {url}"
   },
   "compute": {
-    "intro": "Compute (face_swap): send two image <b>HTTPS direct URLs</b> in order.\nPre-auth hold: {hold} USD, tier: {priority}.\nSend /cancel to abort.",
-    "ask_source": "Send <b>source</b> image URL:",
-    "ask_target": "Send <b>target</b> image URL:",
-    "invalid_url": "URL must start with http:// or https://",
-    "success": "Task created.\nTask ID: <code>{task_id}</code>\nStatus: {status}\n(Use /task to check progress)",
-    "cancelled": "Task creation cancelled."
+    "ask_faces": "AI Face Swap\n\nSend 1-4 <b>face reference images</b> at once.\nIf you only have 1 image, the system will fill all 4 reference slots automatically.\n\nSend /cancel to abort.",
+    "faces_received": "Face references received: {count}/{max}\n\nYou may send more, or continue to the next step.",
+    "faces_full": "Received 4 face references. The first 4 images will be used.",
+    "need_faces": "Please send at least 1 face reference image first.",
+    "ask_target": "Send 1 <b>target image</b>.\nThis is the image you want to swap the face into.",
+    "target_received": "Target image received.\n\nContinue to confirm settings.",
+    "target_already_received": "The first target image is already selected. Cancel and start again to replace it.",
+    "face_album_tail_ignored": "Received another image from the face album. It will not be used as the target image.",
+    "need_target": "Please send 1 target image first.",
+    "invalid_image": "Please send an image. JPEG, PNG and WebP are supported.",
+    "use_buttons": "Images are ready. Please use the buttons below.",
+    "confirm": "Confirm generation\n\nFace references: {faces}\nFace restore: {restore}\nQueue tier: {priority}\nPre-auth hold: {hold} USD\n\nBilling: charged by actual runtime seconds. Failed tasks are not charged.",
+    "success": "Task submitted\n\nTask code: <code>{task_code}</code>\nStatus: {status}\nQueue tier: {priority}\nPre-auth hold: {hold} USD\n\nUse the refresh button or open Task history.",
+    "missing_inputs": "Task inputs are incomplete. Please start again.",
+    "cancelled": "Task creation cancelled.",
+    "on": "on",
+    "off": "off",
+    "restore_on": "✨ Face restore: on",
+    "restore_off": "✨ Face restore: off",
+    "priority_lite": "🐢 Normal",
+    "priority_default": "⚡ Standard",
+    "priority_plus": "🚀 Priority",
+    "btn_next_target": "➡️ Next: target image",
+    "btn_next_confirm": "➡️ Next: confirm",
+    "btn_reset": "🔄 Upload again",
+    "btn_reset_target": "🔄 Upload target again",
+    "btn_back_faces": "↩️ Back to faces",
+    "btn_start_generate": "🎬 Start generation",
+    "btn_my_tasks": "My tasks",
+    "btn_cancel_task": "❌ Cancel task",
+    "btn_new_task": "🎭 Create another"
+  },
+  "remove_watermark": {
+    "ask_image": "🖌 <b>Remove Watermark / Logo</b>\n\nSend 1 image to process.\nThe system will automatically remove visible watermarks, logos, text overlays, or translucent marks.\n\nSend /cancel to abort.",
+    "image_received": "✅ Image received.\n\nContinue to confirm settings.",
+    "image_already_received": "The first image is already selected. Cancel and start again to replace it.",
+    "need_image": "Please send 1 image first.",
+    "confirm": "Confirm generation\n\nTask type: Remove Watermark / Logo\nQueue tier: {priority}\nPre-auth hold: {hold} USD\n\nBilling: charged by actual runtime seconds. Failed tasks are not charged.",
+    "success": "Task submitted\n\nTask code: <code>{task_code}</code>\nStatus: {status}\nQueue tier: {priority}\nPre-auth hold: {hold} USD\n\nUse the refresh button or open Task history.",
+    "missing_inputs": "Task inputs are incomplete. Please start again.",
+    "btn_next_confirm": "➡️ Next: confirm settings",
+    "btn_new_task": "🖌 Create another"
+  },
+  "batch": {
+    "choose": "📦 <b>Batch processing</b>\n\nChoose a batch workflow.",
+    "ask_archive": "🖌 <b>Batch Remove Watermark / Logo</b>\n\nUpload a zip, tar, or tar.gz archive.\nThe original folder structure will be preserved and the processed results will be sent back as an archive.\n\nSend /cancel to abort.",
+    "invalid_archive": "Please upload a valid zip, tar, or tar.gz archive with up to 20 JPEG/PNG/WebP images.",
+    "confirm": "Confirm batch processing\n\nFile: <code>{filename}</code>\nImages: {count}\nQueue tier: {priority}\nPre-auth hold: {hold} USD\n\nBilling: each image is charged by actual runtime seconds. Failed items are not charged. Results will be returned in the original folder structure.",
+    "success": "Batch submitted\n\nBatch code: <code>{batch_code}</code>\nImages: {count}\nStatus: {status}\nQueue tier: {priority}\nPre-auth hold: {hold} USD\n\nThe result archive will be sent automatically when processing finishes.",
+    "status": "📦 <b>Batch status</b>\n\nBatch code: <code>{batch_code}</code>\nStatus: <b>{status}</b>\nTotal: {total}\nSucceeded: {success}\nFailed: {failed}\nCreated: {created}\nCompleted: {completed}",
+    "missing_archive": "Archive data expired. Please start again.",
+    "not_found": "Batch not found or access denied.",
+    "history_title": "📦 Batch history",
+    "history_empty": "No batch jobs yet.",
+    "history_entry": "<code>{code}</code> | {time} | {success}/{total} succeeded | failed {failed} | {status}",
+    "btn_remove_watermark": "🖌 Remove Watermark / Logo",
+    "btn_start": "🎬 Start batch",
+    "btn_history": "Batch history"
   },
   "history": {
     "title": "📋 Transaction History",
     "empty": "No transactions yet.",
-    "entry": "{icon} {type_name} | {amount} USD | {time}",
+    "entry": "{time} | {icon} {type_name} | {amount} USD",
     "page": "Page {current}/{total}",
     "no_more": "No more records.",
     "type_deposit": "Deposit",
@@ -64,19 +144,30 @@
     "type_hold": "Pre-auth hold",
     "type_hold_release": "Hold released",
     "type_consumption": "Compute usage",
-    "prev": "⬅️ Previous",
-    "next": "Next ➡️"
+    "prev": "《",
+    "next": "》"
+  },
+  "task_history": {
+    "title": "🗂 Task History",
+    "empty": "No tasks yet.",
+    "entry": "<code>{code}</code> | {time} | {type} | {status}",
+    "page": "Page {current}/{total}"
+  },
+  "task_type": {
+    "face_swap": "AI Face Swap",
+    "remove_watermark": "Remove Watermark / Logo"
   },
   "language": {
     "select": "🌐 Please select language:",
-    "changed": "✅ Language changed to: {lang}"
+    "changed": "✅ Language changed to: {language}"
   },
   "common": {
     "error": "❌ Operation failed. Please try again later.",
     "help_title": "📖 Available Commands",
-    "help_text": "/start - Get started\n/recharge - Top up USDT\n/balance - Check balance\n/history - Transaction history\n/compute - Create compute task (face swap)\n/task - Task status\n/lang - Change language\n/help - Help",
+    "help_text": "/start - Open dashboard\n/help - Help\n\nThe dashboard includes: My, AI Face Swap, Remove Watermark / Logo, Batch processing, Top up and Help.\n\nTask history, transaction history and language settings are under My.",
     "unknown": "Unknown command. Type /help for help.",
     "btn_check_status": "🔍 Check status",
-    "btn_cancel": "❌ Cancel order"
+    "btn_cancel": "❌ Cancel order",
+    "btn_back": "Back"
   }
 }

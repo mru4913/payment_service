@@ -46,6 +46,7 @@ class BackendClient:
         *,
         json_body: Any = None,
         params: dict[str, Any] | None = None,
+        files: dict[str, Any] | None = None,
     ) -> Any:
         try:
             resp = await self._client.request(
@@ -53,6 +54,7 @@ class BackendClient:
                 path,
                 json=json_body,
                 params=params,
+                files=files,
             )
         except httpx.RequestError as e:
             logger.warning("backend_http_transport_error path=%s err=%s", path, e)
@@ -163,6 +165,24 @@ class BackendClient:
             },
         )
 
+    async def create_plisio_recharge_payment(
+        self,
+        telegram_id: int,
+        amount_usd: Decimal,
+        description: str = "",
+    ) -> dict[str, Any]:
+        """POST /payments，创建 Plisio invoice 充值订单。"""
+        return await self._request(
+            "POST",
+            "/payments",
+            params={
+                "telegram_id": telegram_id,
+                "amount_usd": str(amount_usd),
+                "payment_method": "plisio_invoice",
+                "description": description,
+            },
+        )
+
     async def get_payment(self, payment_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/payments/{payment_id}")
 
@@ -176,9 +196,80 @@ class BackendClient:
             params={"telegram_id": telegram_id},
         )
 
+    async def get_task_by_ref(self, task_ref: str, telegram_id: int) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/tasks/ref/{task_ref}",
+            params={"telegram_id": telegram_id},
+        )
+
+    async def list_user_tasks(
+        self,
+        telegram_id: int,
+        *,
+        skip: int = 0,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            "/tasks",
+            params={"telegram_id": telegram_id, "skip": skip, "limit": limit},
+        )
+
     async def create_task(self, body: dict[str, Any]) -> dict[str, Any]:
         """POST /tasks；body 中 Decimal 等须已转为 JSON 可序列化类型。"""
         return await self._request("POST", "/tasks", json_body=body)
+
+    async def upload_media(
+        self,
+        *,
+        content: bytes,
+        filename: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        """POST /media/uploads；返回 file_ref。"""
+        return await self._request(
+            "POST",
+            "/media/uploads",
+            files={"file": (filename, content, content_type)},
+        )
+
+    async def create_remove_watermark_batch(
+        self,
+        *,
+        telegram_id: int,
+        priority_type: str,
+        content: bytes,
+        filename: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        """POST /batches/remove-watermark with archive multipart payload."""
+        return await self._request(
+            "POST",
+            "/batches/remove-watermark",
+            params={"telegram_id": telegram_id, "priority_type": priority_type},
+            files={"archive": (filename, content, content_type)},
+        )
+
+    async def get_batch(self, batch_id: UUID, telegram_id: int) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/batches/{batch_id}",
+            params={"telegram_id": telegram_id},
+        )
+
+    async def list_batches(
+        self,
+        telegram_id: int,
+        *,
+        skip: int = 0,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            "/batches",
+            params={"telegram_id": telegram_id, "skip": skip, "limit": limit},
+        )
 
 
 _client: BackendClient | None = None
@@ -207,7 +298,6 @@ def task_body_for_create(
     third_party_platform: str,
     priority_type: str,
     input_payload: dict[str, Any],
-    hold_amount: Decimal,
     task_description: str | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
@@ -218,7 +308,6 @@ def task_body_for_create(
         "third_party_platform": third_party_platform,
         "priority_type": priority_type,
         "input_payload": input_payload,
-        "hold_amount": str(hold_amount),
     }
     if task_description is not None:
         body["task_description"] = task_description
