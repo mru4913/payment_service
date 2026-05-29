@@ -1,6 +1,6 @@
 """Initial schema: users, payments, tasks, task_balance_holds, balance_transactions.
 
-Revision ID: 0001_initial_schema
+Revision ID: 001
 Revises:
 Create Date: 2026-05-08
 
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0001_initial_schema"
+revision: str = "001"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -68,6 +68,12 @@ def upgrade() -> None:
         ),
         sa.Column(
             "balance",
+            sa.Numeric(15, 6),
+            server_default="0",
+            nullable=False,
+        ),
+        sa.Column(
+            "balance_held",
             sa.Numeric(15, 6),
             server_default="0",
             nullable=False,
@@ -157,6 +163,13 @@ def upgrade() -> None:
         ["external_payment_id"],
         unique=False,
     )
+    op.create_index(
+        "uq_payment_method_external_id",
+        "payments",
+        ["payment_method", "external_payment_id"],
+        unique=True,
+        postgresql_where=sa.text("external_payment_id IS NOT NULL"),
+    )
 
     op.create_table(
         "tasks",
@@ -192,12 +205,20 @@ def upgrade() -> None:
         sa.Column("started_at", sa.TIMESTAMP(), nullable=True),
         sa.Column("completed_at", sa.TIMESTAMP(), nullable=True),
         sa.Column("billable_seconds", sa.Numeric(12, 3), nullable=True),
-        sa.Column("charged_amount_usd", sa.Numeric(15, 6), nullable=True),
+        sa.Column("charged_amount", sa.Numeric(15, 6), nullable=True),
         sa.Column("pricing_version", sa.String(length=32), nullable=True),
         sa.Column("error_code", sa.String(length=64), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("idempotency_key", sa.String(length=64), nullable=True),
         sa.Column("celery_task_id", sa.String(length=128), nullable=True),
+        sa.Column("celery_claimed_at", sa.TIMESTAMP(), nullable=True),
+        sa.Column("last_enqueue_attempt_at", sa.TIMESTAMP(), nullable=True),
+        sa.Column(
+            "enqueue_attempt_count",
+            sa.Integer(),
+            server_default="0",
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(
             ["telegram_id"],
             ["users.telegram_id"],
@@ -234,6 +255,76 @@ def upgrade() -> None:
         ["telegram_id", "idempotency_key"],
         unique=True,
         postgresql_where=sa.text("idempotency_key IS NOT NULL"),
+    )
+
+    op.create_table(
+        "batch_jobs",
+        sa.Column("batch_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("telegram_id", sa.BigInteger(), nullable=False),
+        sa.Column("task_type", sa.String(length=64), nullable=False),
+        sa.Column("priority_type", sa.String(length=32), nullable=False),
+        sa.Column("source_archive_name", sa.String(length=255), nullable=False),
+        sa.Column("archive_format", sa.String(length=16), nullable=False),
+        sa.Column("status", sa.String(length=20), nullable=False),
+        sa.Column("total_items", sa.Integer(), nullable=False),
+        sa.Column("succeeded_items", sa.Integer(), nullable=False),
+        sa.Column("failed_items", sa.Integer(), nullable=False),
+        sa.Column("estimated_hold_amount", sa.Numeric(15, 6), nullable=False),
+        sa.Column("result_archive_path", sa.String(length=1024), nullable=True),
+        sa.Column("error_message", sa.String(length=500), nullable=True),
+        sa.Column("packaging_claim_id", sa.String(length=128), nullable=True),
+        sa.Column("packaging_claimed_at", sa.TIMESTAMP(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("completed_at", sa.TIMESTAMP(), nullable=True),
+        sa.ForeignKeyConstraint(["telegram_id"], ["users.telegram_id"]),
+        sa.PrimaryKeyConstraint("batch_id"),
+    )
+    op.create_index(
+        "idx_batch_jobs_telegram_created",
+        "batch_jobs",
+        ["telegram_id", "created_at"],
+        unique=False,
+    )
+    op.create_index(
+        "idx_batch_jobs_status_created",
+        "batch_jobs",
+        ["status", "created_at"],
+        unique=False,
+    )
+
+    op.create_table(
+        "batch_items",
+        sa.Column("item_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("batch_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("task_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("original_relative_path", sa.String(length=1024), nullable=False),
+        sa.Column("result_relative_path", sa.String(length=1024), nullable=True),
+        sa.Column("input_file_ref", sa.Text(), nullable=False),
+        sa.Column("result_url", sa.Text(), nullable=True),
+        sa.Column("status", sa.String(length=20), nullable=False),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["batch_id"], ["batch_jobs.batch_id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(["task_id"], ["tasks.task_id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("item_id"),
+    )
+    op.create_index(
+        "idx_batch_items_batch_id",
+        "batch_items",
+        ["batch_id"],
+        unique=False,
+    )
+    op.create_index(
+        "idx_batch_items_task_id",
+        "batch_items",
+        ["task_id"],
+        unique=True,
     )
 
     op.create_table(
@@ -314,6 +405,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("balance_transactions")
     op.drop_table("task_balance_holds")
+    op.drop_table("batch_items")
+    op.drop_table("batch_jobs")
     op.drop_table("tasks")
     op.drop_table("payments")
     op.drop_table("users")
