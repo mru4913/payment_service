@@ -16,6 +16,7 @@ COPY alembic/ alembic/
 COPY alembic.ini .
 
 RUN adduser --disabled-password --gecos "" appuser \
+    && mkdir -p /app/data/uploads \
     && chown -R appuser:appuser /app
 USER appuser
 

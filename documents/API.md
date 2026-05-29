@@ -45,6 +45,14 @@
 | `GET /balance/transactions/recent` | `transactions`（时间窗由 `days` 决定） |
 | `GET /balance/transactions/type/{transaction_type}` | `transactions` |
 
+## Payments（充值）
+
+`POST /payments` 创建充值订单。当前 Bot 默认使用
+`payment_method=plisio_invoice`：后端创建 Plisio invoice，响应的
+`metadata.invoice_url` 用于打开支付页面，`external_payment_id` 保存 Plisio
+`txn_id`，到账由 `worker_poll` 轮询 Plisio `/operations/<txn_id>` 后确认入账。
+旧 `trc20_usdt` 固定地址方案保留，但不作为 Bot 默认入口。
+
 ## `GET /balance/user/{telegram_id}/summary`
 
 按用户 + 时间窗口（`period_days`，默认 30）汇总流水，响应在 **`telegram_id`**、**`period_days`** 之外，还包含：
@@ -83,7 +91,21 @@
 | `input_payload` | 与 `task_type` 绑定的 JSON 对象 |
 | `task_description` | 可选 |
 | `idempotency_key` | 可选；同一用户下非空时唯一 |
-| `hold_amount` | 预授权冻结上限（正数） |
+| `hold_amount` | 可选；预授权冻结上限（正数）。为空时服务端按 workflow 预计秒数 × 档位秒单价计算。 |
+
+`face_swap` 的 `input_payload` 由 Bot 上传图片后生成，格式为：
+
+```json
+{
+  "face_images": ["/app/data/uploads/2026-05-18/a.jpg"],
+  "target_image": "/app/data/uploads/2026-05-18/t.jpg",
+  "restore": false
+}
+```
+
+- `face_images` 支持 1-4 张；Worker 会补齐为 4 个 RunningHub 输入位。
+- `target_image` 必填且仅 1 张。
+- `restore` 默认 `false`，会以布尔值写入 RH node `262.value`。
 
 **响应**：`task_id`、`status`、`queued_at`、**`created`**（是否本次新建；幂等重放时为 `false`，且不会再次触发入队占位）。
 
@@ -96,6 +118,28 @@
 | `insufficient_funds` | 402 |
 | `invalid_hold_amount` | 422 |
 | 其它业务冲突 | 400 / 409 |
+
+## Media（Bot 图片中转）
+
+前缀 **`/media`**（需 API Key）。
+
+### `POST /media/uploads`
+
+Bot 从 Telegram 下载图片后，以 multipart 上传给后端保存到 `UPLOAD_DIR`
+（默认 `data/uploads/YYYY-MM-DD/`），响应中的 `file_ref` 可直接放入
+`/tasks.input_payload`，由 Worker 通过共享 volume 读取。
+
+**请求**：`multipart/form-data`，字段 `file`。仅接受 `image/jpeg`、`image/png`、`image/webp`；单文件大小受 `UPLOAD_MAX_BYTES` 限制（默认 10 MiB），超限返回 **413**。
+
+**响应示例**：
+
+```json
+{
+  "file_ref": "/app/data/uploads/2026-05-18/uuid.jpg",
+  "filename": "face.jpg",
+  "content_type": "image/jpeg"
+}
+```
 
 ### `GET /tasks/{task_id}?telegram_id=<id>`
 
@@ -110,14 +154,18 @@
 ## 算力计费
 
 MVP 使用 **按运行秒数计费**，价格来自
-[`backend/config/pricing_table.yaml`](../backend/config/pricing_table.yaml)：
+[`backend/config/tier_platform_catalog.yaml`](../backend/config/tier_platform_catalog.yaml)
+中的顶层 `priority_tiers`：
 
-- 价格维度为 **`task_type + priority_type`**。
+- `priority_type` 档位配置客户可见标价 `price_per_second_usd` 与 `pricing_version`。
+- `platforms.runninghub.priority_tiers` 配置 RunningHub `instance_type` 与内部成本价 `cost_per_second_usd`，用于成本核算和平台映射，不直接作为用户扣费价格。
+- [`backend/config/workflow_recipes.yaml`](../backend/config/workflow_recipes.yaml) 为每个 workflow 配置 `estimated_runtime_seconds`。
+- 预授权冻结金额 = `estimated_runtime_seconds × price_per_second_usd`；Bot 可传入该金额，后端也可在 `hold_amount` 为空时自行计算。
 - 仅 **`succeeded`** 任务扣费；**`failed` / `cancelled`** 不计费并释放冻结。
 - 可计费秒优先读取 RunningHub 结果中的 `taskCostTime` 等上游耗时字段；缺失时回退 `started_at → completed_at`。
 - 费用按秒向上取整后计算，并保留 6 位 USD 精度。
 - 若计算费用超过本任务 hold，则按 hold 上限扣费，并在 `result_payload.billing.charge_capped` 记录。
-- 缺少启用的价格配置时视为配置错误，不静默扣 0。
+- 缺少启用的档位价格或 workflow 预计秒数时视为配置错误，不静默扣 0。
 
 ## 异步执行（Celery）
 
@@ -145,8 +193,9 @@ MVP 使用 **按运行秒数计费**，价格来自
 
 1. 配置 `.env`（至少 **`POSTGRES_PASSWORD`**；若需鉴权则设 **`API_KEY`**）。Compose 会为 **`app` / `worker`** 注入 **`DATABASE_URL`**、**`CELERY_BROKER_URL`**。
 2. 启动：`docker compose up -d --build`，等待 **`db`**、**`redis`** healthy，**`worker`** 完成 `alembic upgrade head` 并监听队列 **`compute`**。
-3. 确保测试用户有足够余额（可用 **`PUT /users/{telegram_id}/balance`** 调账或先走充值流程）。
-4. **`POST /tasks`**（Header：`X-API-Key` 与配置一致），body 至少含 `telegram_id`、`task_type`、`third_party_platform`、`priority_type`、`input_payload`、`hold_amount`。
-5. 预期：**`worker` 日志**出现处理该 **`task_id`** 的记录；**`GET /users/{id}/balance`** 中 **`balance_held`** 在结算后回落；**`GET /users/{id}/transactions`** 或 **`/balance/user/{id}/summary`** 中出现 **`hold`**、**`consumption`**、**`hold_release`** 等类型与文档一致。
+3. 确认 **`app` / `worker`** 共享同一 `data/uploads` volume，且容器内路径一致（Compose 已挂载到 `/app/data/uploads`）。
+4. 确保测试用户有足够余额（可用 **`PUT /users/{telegram_id}/balance`** 调账或先走充值流程）。
+5. 先 **`POST /media/uploads`** 上传图片拿到 `file_ref`，再 **`POST /tasks`**（Header：`X-API-Key` 与配置一致），body 至少含 `telegram_id`、`task_type`、`third_party_platform`、`priority_type`、`input_payload`；`hold_amount` 可省略并由后端按配置估算。
+6. 预期：**`worker` 日志**出现处理该 **`task_id`** 的记录；**`GET /users/{id}/balance`** 中 **`balance_held`** 在结算后回落；**`GET /users/{id}/transactions`** 或 **`/balance/user/{id}/summary`** 中出现 **`hold`**、**`consumption`**、**`hold_release`** 等类型与文档一致。
 
 具体 curl 示例以保持与本机 **`PORT`**（默认 8000）一致为准。

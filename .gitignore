@@ -14,7 +14,7 @@ wheels/
 milestone*/
 logs/
 .env
-.env.test
+.env.dev
 
 
 AGENTS.md

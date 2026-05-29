@@ -108,7 +108,7 @@
 | `tasks.task_id`（UUID） | 内部主键；与 RH `taskId` **不同**，勿混用。 |
 | `tasks.upstream_task_id` | 存 RH 返回的 **`data.taskId`（字符串）**。 |
 | `tasks.third_party_platform` | 固定语义 `runninghub`（与现有枚举一致）。 |
-| `tasks.priority_type` | 映射到 RH `instanceType`：`lite`→`lite`，`default`→`standard`，`plus`→`plus`（见 `backend/config/tier_platform_catalog.yaml`）。 |
+| `tasks.priority_type` | 映射到 RH `instanceType`：`lite`→不传、`default`→`standard`，`plus`→`plus`（见 `backend/config/tier_platform_catalog.yaml` 的 `platforms.runninghub.priority_tiers`）。 |
 | `tasks.input_payload` | 见 §7；配方或透传模式下须能解析出 RH `workflowId` 与 `nodeInfoList`。 |
 | `tasks.result_payload` | 存 **`eventData` 解析结果** 与/或 **`query` 返回的 `results` 摘要**（URL 列表、类型等），按需裁剪体积。 |
 | `tasks.status` | `queued` → 入队未提交 RH；`running` → 已拿到 `upstream_task_id` 且 RH 侧运行中；`succeeded` / `failed` / `cancelled` 与 RH 终态对齐规则需固化（见 §8）。 |
@@ -118,19 +118,22 @@
 
 ## 7. `input_payload` 约定（与 `workflow_recipes.yaml` 对齐）
 
-当前仓库 [`backend/config/workflow_recipes.yaml`](../../backend/config/workflow_recipes.yaml) 中 **已登记** 的 `task_type` 键含 **`face_swap`**、**`universal_edit`** 等（配方将 `input_payload` 译为 RH `nodeInfoList`；`workflow_id` 在 YAML 或 payload 中须为真实 RH `workflowId`）。**`task_type` 在 API 层为自由字符串**（`CreateTaskRequest.task_type`，最长 64），Worker 按配方表解析；新增能力时在 YAML 增加键即可。
+当前仓库 [`backend/config/workflow_recipes.yaml`](../../backend/config/workflow_recipes.yaml) 中 **已登记** 的 `task_type` 键含 **`face_swap`**、**`remove_watermark`** 等（配方将 `input_payload` 译为 RH `nodeInfoList`；`workflow_id` 在 YAML 或 payload 中须为真实 RH `workflowId`）。**`task_type` 在 API 层为自由字符串**（`CreateTaskRequest.task_type`，最长 64），Worker 按配方表解析；新增能力时在 YAML 增加键即可。
 
 **透传模式**（`nodes: null`、`workflow_id` 来自 payload）仍被 `recipe` 模块支持，YAML 中未预置条目时也可在将来增加新键。
 
-换脸类 **`face_swap`** 的 `input_payload` 示例（字段名须与配方 `nodes` 键一致）：
+换脸类 **`face_swap`** 的 API `input_payload` 示例：
 
 ```json
 {
-  "source_image": "https://…/a.jpg",
-  "target_image": "https://…/b.jpg"
+  "face_images": ["/app/data/uploads/2026-05-18/a.jpg"],
+  "target_image": "/app/data/uploads/2026-05-18/t.jpg",
+  "restore": false
 }
 ```
 
+- `face_images` 支持 1-4 张；Worker 会按 1→`[1,1,1,1]`、2→`[1,2,1,2]`、3→`[1,2,3,1]`、4→`[1,2,3,4]` 补齐为四个 RH 输入。
+- 当前 `sdxl_swapface_20260312_api.json` 映射为：`face_image_1`→node `45.image`，`face_image_2`→`46.image`，`face_image_3`→`47.image`，`face_image_4`→`48.image`，`target_image`→`70.image`，`restore`→`262.value`。
 - **`workflow_id`**：配方中写死时由 Worker 使用；配方为 `null` 时须出现在 `input_payload`（见 `recipe.get_recipe` 逻辑）。
 - 若值为 **本机绝对路径**：Worker 经 `common.storage.resolve_file_ref` 读文件或下载 URL 后 **`upload_media`**，再写 RH `fieldValue`。
 - 官方 **`nodeInfoList`** 字段说明：[doc-8287336](https://www.runninghub.cn/runninghub-api-doc-cn/doc-8287336)。
@@ -154,7 +157,9 @@
 ## 9. 计费与 `charged_amount`
 
 - MVP 已定稿为 **按运行秒数计费**：优先读取 RH 返回的 **`taskCostTime`** 等耗时字段；缺失时回退本地 `started_at` → `completed_at`。
-- 价格配置在 **`backend/config/pricing_table.yaml`**，维度为 **`task_type + priority_type`**；结算写入 **`billable_seconds` / `charged_amount` / `pricing_version`**。
+- 客户标价配置在 **`backend/config/tier_platform_catalog.yaml`** 顶层 `priority_tiers.price_per_second_usd`；RunningHub 内部成本价配置在 `platforms.runninghub.priority_tiers.cost_per_second_usd`。
+- workflow 预计秒数配置在 **`backend/config/workflow_recipes.yaml`** 的 `estimated_runtime_seconds`，预授权金额按客户标价与预计秒数相乘估算。
+- 结算写入 **`billable_seconds` / `charged_amount` / `pricing_version`**。
 - 仅 **`succeeded`** 任务扣费；**`failed` / `cancelled`** 写 0 费用并释放 hold。若计算费用超过 hold，则按 hold 上限 capture 并在 `result_payload.billing.charge_capped` 记录。
 
 ---
@@ -183,7 +188,7 @@
 
 ## 12. 讨论清单（需要你方拍板）
 
-1. **`priority_type` → `instanceType`**：以 `tier_platform_catalog.yaml` 为准；若 RH 文档变更需同步该文件。
+1. **`priority_type` → `instanceType`**：以 `tier_platform_catalog.yaml` 的 `platforms.runninghub.priority_tiers` 为准；若 RH 文档变更需同步该文件。
 2. **结算运营**：是否需要价格运营后台、历史价目查询与 RH 账单自动对账？
 3. **`webhookUrl` 形态**：固定 path + 密钥、是否带内部 `task_id` query、与多环境（staging/prod）域名如何隔离？
 4. **`input_payload`**：是否允许客户端传 **完整 `workflow` JSON**（RH 支持覆盖 `workflowId`），还是仅允许平台登记过的 `workflow_id`？

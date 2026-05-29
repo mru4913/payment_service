@@ -183,7 +183,9 @@
 
 - 每个上游任务优先使用 RunningHub 返回的耗时字段（如 `taskCostTime`）作为 **计费时长**；缺失时回退 `started_at` → `completed_at` 的本地运行时长。
 - `billable_seconds` 按秒向上取整，实际扣费为 `billable_seconds × price_per_second_usd`，金额保留 6 位 USD 精度。
-- 价目表由 `backend/config/pricing_table.yaml` 管理，维度为 **`task_type + priority_type`**，并写入 `pricing_version` 便于对账。
+- 客户标价由 `backend/config/tier_platform_catalog.yaml` 顶层 `priority_tiers.price_per_second_usd` 管理；RunningHub 内部成本价由 `platforms.runninghub.priority_tiers.cost_per_second_usd` 管理。
+- workflow 预计秒数由 `backend/config/workflow_recipes.yaml` 的 `estimated_runtime_seconds` 管理。
+- 预授权冻结金额 = `estimated_runtime_seconds × priority_tiers.price_per_second_usd`；结算写入 `pricing_version` 便于对账。
 - 某用户在统计窗口内：
 
 \[
@@ -451,7 +453,7 @@ queued ──► running ──► succeeded
 
 | 现状 | 演进方向 |
 |------|----------|
-| `frontend/bot/` + `frontend/integrations/` | 单 Bot：`/balance`、`/task`、`/compute` 经 HTTP 调 FastAPI；可选未来再拆第二 Bot。 |
+| `frontend/bot/` + `frontend/integrations/` | 单 Bot：用户通过首页 inline UI 进入账户、充值、任务历史与 AI 换脸；`/task` 仅保留为编号查询入口，业务访问均经 HTTP 调 FastAPI。 |
 | `backend/services/balance_service.py` 等 | 复用余额；扩展「消费 / 冻结」流水类型与扣费接口；对齐表 `tasks`、`task_balance_holds`。 |
 | FastAPI 路由 | 已含 **`/tasks`**（鉴权）与 **`/api/webhooks/runninghub/{task_id}`**（公开）；支付回调与算力 Webhook 按路由拆分。 |
 | Celery / Redis | 已实现 **`tasks.execute_compute`**、`CELERY_BROKER_URL`、Compose **`worker`** 服务；未配 broker 时 API 仅告警不入队。 |

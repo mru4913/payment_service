@@ -122,9 +122,9 @@ eshow/   # 仓库根目录名以克隆时为准
 - **`backend/workers/`**：Celery 应用、**`compute_runner`**、**`rh_pipeline`**（RunningHub 提交链）。
 - **`backend/third_party/runninghub/`**：RunningHub HTTP 客户端。
 - **`backend/database/models/`**：含 **`task.py`**、**`task_balance_hold.py`** 等；`repositories/`、`services/` 有对应 Task / 预授权逻辑。
-- **`backend/config/workflow_recipes.yaml`**、**`tier_platform_catalog.yaml`**：算力配方与档位映射。
+- **`backend/config/workflow_recipes.yaml`**、**`tier_platform_catalog.yaml`**：算力配方、客户标价、平台成本与档位映射。
 - **`scripts/cleanup_uploads.py`**：临时上传目录清理（配合 `upload_dir` 配置）。
-- **`frontend/bot/`**：Telegram 应用（`build_telegram_app`）；`handlers/` 含支付、**`/balance`/`/task`/`/compute`**（经 HTTP）；充值等部分 handler 仍可能直连 DB。
+- **`frontend/bot/`**：Telegram 应用（`build_telegram_app`）；用户主流程通过首页 inline UI 进入，`handlers/` 含充值、账户、交易记录、任务历史、AI 换脸、`/task` 查询等能力，所有业务访问经 HTTP 调 FastAPI。
 - **`frontend/integrations/`**：`BackendClient` 调 FastAPI（`BACKEND_BASE_URL`、`X-API-Key`），**不** import `backend.database`。
 
 ## 3. 核心模块说明
@@ -223,10 +223,10 @@ ALIPAY_PRIVATE_KEY=your_private_key
 WECHAT_APP_ID=your_wechat_app_id
 WECHAT_MCH_ID=your_merchant_id
 
-# TRC20 USDT 配置
-TRC20_WALLET_ADDRESS=your_trc20_wallet_address    # 设置后自动启用链上监控
-TRC20_CHECK_INTERVAL=15                            # 轮询间隔(秒)，默认15
-TRC20_ORDER_TIMEOUT_MINUTES=15                     # 订单超时(分钟)，默认15
+# Plisio invoice 充值（当前默认路径；无公网 callback 时靠 worker_poll 轮询）
+PLISIO_ENABLED=true
+PLISIO_API_KEY=your_plisio_api_key
+PAYMENT_POLL_ENABLED=true
 
 # 应用配置（见 backend/config.py Settings）
 ENVIRONMENT=development
@@ -402,8 +402,8 @@ chore: 构建过程或工具配置更新
 ### Q: 如何添加新的支付方式？
 A: 在 `backend/payments/` 目录下创建新的支付提供商文件，继承 `PaymentProvider` 基类实现统一接口，然后在 `callbacks.py` 中注册。参考 `trc20_usdt.py` 的实现。
 
-### Q: TRC20 USDT 支付如何工作？
-A: 用户创建充值订单后获得收款地址和唯一金额，转账后后台 `TRC20Monitor` 每15秒轮询 TronScan API，按金额自动匹配订单并完成充值。在 `.env` 中设置 `TRC20_WALLET_ADDRESS` 即可启用。
+### Q: TRC20 USDT 固定地址方案还在吗？
+A: 代码和测试暂时保留，便于回退或后续对账，但当前 Bot 充值入口默认使用 Plisio invoice + worker_poll 轮询；生产/测试环境保持 `TRC20_WALLET_ADDRESS` 为空即可不启动旧链上监控。
 
 ### Q: 如何修改Bot命令？
 A: 在 `frontend/commands.py` 中添加新的命令处理函数，并在 `bot.py` 中注册。

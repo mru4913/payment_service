@@ -50,7 +50,7 @@
 
 - **`third_party_platform == runninghub`**：走 **`run_runninghub_pipeline`**（`backend/workers/rh_pipeline.py`）：上传媒体、`create_comfy_task`、写 **`upstream_task_id`** 与 **`running`**。**终态与结算（当前默认）**：
   - **轮询主路径（默认）**：`.env` 中 **`POLL_ENABLED=true`**，并起 **`celery_beat`** + 消费 **`maintenance`** 队列的 **`worker_poll`**（见 `docker-compose.yml`）。Beat 调度 **`poll_schedule`** → **`tasks.poll_terminal`**，扫 **`running`** 且已有 **`upstream_task_id`** 的任务，调 RH **`query_task`**；超过 **`POLL_MAX_RUNNING_SEC`**（默认 7200 秒）仍无终态则标 **`failed`**（`poll_running_timeout`）并释槽/解冻。仍需 **`RUNNINGHUB_API_KEY`**；**`CELERY_BROKER_URL` 须显式设置** 才会注册 `poll_schedule`（详见下「轮询与 Celery Beat」）。
-  - **Webhook（可选）**：配置 **`RUNNINGHUB_WEBHOOK_PUBLIC_BASE_URL`** 后，`create` 请求会带 **`webhookUrl`**，RH 回调 **`POST /api/webhooks/runninghub/{task_id}`**，回调内可选 **`query_task`**，再 **`settle_task_balance_hold_async`** / **`settle_task_balance_hold`**。与轮询共用 **CAS 幂等**，可同时启用以降低对 **`query_task`** 的依赖。
+  - **Webhook（暂不启用）**：当前正式路径要求 **`RUNNINGHUB_WEBHOOK_PUBLIC_BASE_URL` 留空**。batch 终态、无结果不扣费、主动推图/打包依赖轮询路径；未来启用 webhook 前必须补齐 batch terminal handling。
 - **其它平台**：仍为 **stub** 路径（`promote_task_to_terminal_and_settle`），便于无上游密钥时联调终态与预授权结算。
 
 ### 轮询与 Celery Beat（必读）
@@ -61,13 +61,28 @@
 4. **每次 tick 的结构化日志**：`poll_terminal: tick` 一行包含 `batch`、`elapsed_ms`、`concurrent`、`terminal_cas_hit` / `terminal_cas_miss`、`query_failures`、`still_in_progress`，便于对齐限流与 interval。
 5. **`query_task` 连续失败**：当前实现为打 **`poll_terminal: query_task`** / **`query_snapshot`** 的 **warning** 日志，本 tick 不推进该任务；可对日志做采集告警。长期若在 DB 记连续失败次数再自动 failed，属后续增强。
 6. **结算与释槽**：终态 **CAS 成功** 后调用 **`settle_task_balance_hold_async`** 与 **`release_slot`**（轮询与 Webhook 路径一致）。若 **settle 抛错**，仍会 **释槽**（避免用户永久占坑），并打 **`poll_terminal: settle failed`** 与 **`settle failed but releasing slot anyway`**；对账依赖 settle 幂等与运维跟进。若需改为「settle 成功才释槽」，须单独评估槽位饿死风险后再改代码。
+7. **queued 恢复**：`COMPUTE_REQUEUE_ENABLED=true` 时，Beat 调度 **`tasks.requeue_queued_compute_tasks`**，扫描入队尝试已超过 `COMPUTE_REQUEUE_MIN_AGE_SEC` 的 queued 任务重新投递；若任务已被 worker claim 但超过 `COMPUTE_WORKER_CLAIM_STALE_SEC` 仍未进入 running/终态，会先释放 stale claim 再重新投递。重复 Celery 消息由 worker 的原子 claim 防止重复提交 RunningHub。
 
-Compose 全栈若启用轮询：`docker compose up -d db redis app worker worker_poll celery_beat`，并确保 **`.env` 中 `CELERY_BROKER_URL` 非空**（与 Compose 注入一致），按需配置 **`POLL_*`**。
+Compose 全栈若启用轮询：`docker compose up -d db redis backend worker worker_poll celery_beat frontend`，并确保 **`.env` 中 `CELERY_BROKER_URL` 非空**（与 Compose 注入一致），按需配置 **`POLL_*`**。Plisio 充值轮询还需配置 **`PLISIO_ENABLED=true`**、**`PLISIO_API_KEY`**、**`PAYMENT_POLL_ENABLED=true`**。
 
 联调占位：也可直接调用 `promote_task_to_terminal_and_settle`（`backend.workers.compute_runner`），仅用于开发/测试。
 
 ## Compose 全栈联调提示
 
 - 若宿主机 **6379** 已被占用，在 `.env` 中设置 **`REDIS_PORT=6380`**（或任意空闲端口）；容器内仍通过服务名 **`redis:6379`** 互连，不受影响。
-- **`app` / `worker`** 会通过 Compose 的 `environment` 注入 **`CELERY_BROKER_URL`** 与 **`DATABASE_URL`**，与 `.env` 里面向宿主机的 `DATABASE_URL` 可以不一致。
+- **`backend` / `worker`** 会通过 Compose 的 `environment` 注入 **`CELERY_BROKER_URL`** 与 **`DATABASE_URL`**，与 `.env` 里面向宿主机的 `DATABASE_URL` 可以不一致。
+- Telegram Bot 上传的图片会先进入后端 **`UPLOAD_DIR`**（默认 `data/uploads`），单文件大小由 **`UPLOAD_MAX_BYTES`** 控制（默认 10 MiB）。Compose 已将 `uploads` volume 同时挂载到 **`backend` / `worker`** 的 **`/app/data/uploads`**；生产部署也必须保持两端路径一致，否则 Worker 无法解析 `/tasks.input_payload` 中的 `file_ref`。
 - 镜像内需包含项目根目录的 **`common/`**（日志等）；`Dockerfile` 已 `COPY common/`。运行用户需对项目目录可写以便 `uv` 缓存（镜像内已为 `appuser` 配置家目录与 `/app` 属主）。
+
+## 日志与联调排障
+
+- 后端日志默认写入控制台与 **`LOG_DIR/eshow_backend.log`**，级别由 **`LOG_LEVEL`** 控制；API 响应会返回 **`X-Request-ID`**，请求方传入同名 header 时会沿用。
+- 正式联调建议先开 `LOG_LEVEL=INFO`；需要追 Bot 步骤细节时临时切到 `DEBUG`。
+- 常用检索：
+
+  ```bash
+  docker compose logs -f backend worker worker_poll celery_beat frontend
+  docker compose logs backend worker worker_poll | rg "<task_id>|<upstream_task_id>|rh_pipeline|poll_terminal|plisio_poll|compute_task"
+  ```
+
+- AI 换脸 UI 流程会记录 `telegram_id`、`flow_id`、图片张数、队列等级、`restore`、`task_id`；RunningHub 路径会记录 `workflow_id`、`instance_type`、节点数、上传节点数、`upstream_task_id` 与上游错误码。
